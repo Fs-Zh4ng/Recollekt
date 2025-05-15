@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+import { UserProvider } from './UserConext';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import React from 'react';
@@ -26,6 +27,7 @@ export default function RootLayout() {
   }
 
   return (
+    <UserProvider>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ title: "Recollekt"}} />
@@ -33,6 +35,7 @@ export default function RootLayout() {
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
+    </UserProvider>
   );
 }
 function createContext<T>(defaultValue: T) {
