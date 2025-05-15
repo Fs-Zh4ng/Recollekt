@@ -7,6 +7,47 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logorSign, setLogorSign] = useState(0);
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const handleSignUp = async () => {
+    if (!username || !password || !confirmPassword) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+    setLoading(true);
+    console.log('Sign Up:', { username, password });
+    try { 
+      const response = await fetch('http://127.0.0.1:3000/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+      console.log('Sign Up Response:', data);
+
+      if (response.ok) {
+        Alert.alert('Success', 'Account created successfully');
+        setLogorSign(0); // Switch to login mode
+      } else {
+        Alert.alert('Sign Up Failed', data.error || 'Something went wrong');
+      }
+    }
+    catch (error) {
+      Alert.alert('Error', 'Something went wrong. Please try again later.');
+      console.error(error); 
+    }
+    finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -46,10 +87,12 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome to Recollekt</Text>
-      <Text style={styles.subtitle}>Please log in to continue</Text>
-
-      <TextInput
+      {logorSign === 0 ? (
+        <>
+        <Text style={styles.title}>Welcome to Recollekt</Text>
+        <Text style={styles.subtitle}>Please log in to continue</Text>
+        <Button title="Sign Up" onPress={() => setLogorSign(1)} />
+        <TextInput
         style={styles.input}
         placeholder="Username"
         value={username}
@@ -60,10 +103,44 @@ export default function LoginScreen() {
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
-        secureTextEntry
+        secureTextEntry={true}
       />
+            <Button title={loading ? 'Logging in...' : 'Login'} onPress={handleLogin} disabled={loading} />
 
-      <Button title={loading ? 'Logging in...' : 'Login'} onPress={handleLogin} disabled={loading} />
+        </>
+      ) : (
+        <>
+        <Text style={styles.title}>Welcome to Recollekt</Text>
+        <Text style={styles.subtitle}>Please sign up to continue</Text>
+        <Button title="Log In" onPress={() => setLogorSign(0)} />
+        <TextInput
+        style={styles.input}
+        placeholder="Username"
+        value={username}
+        onChangeText={setUsername}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry={true}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Confirm Password"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        secureTextEntry={true}
+      />
+            <Button title={loading ? 'Signing Up...' : 'Sign Up'} onPress={handleSignUp} disabled={loading} />
+        </>
+      )
+      }
+      
+
+      
+
     </View>
   );
 }
