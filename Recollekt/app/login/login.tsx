@@ -1,8 +1,12 @@
 import React, { useContext, useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../_layout';
+import { useNavigation } from '@react-navigation/native';
+import { UserContext } from '../UserContext'; // Adjust the path to your UserContext file
 
 export default function LoginScreen() {
+  const navigation = useNavigation();
   const { setIsAuthenticated } = useContext(AuthContext);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -70,7 +74,11 @@ export default function LoginScreen() {
 
       if (response.ok) {
         // Save the token (optional, for future API requests)
-        console.log('Token:', data.token);
+        await AsyncStorage.setItem('token', data.token);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: '(tabs)' as never }], // Set the new stack with only the (tabs) route
+        }); // Navigate to the home screen
 
         // Set authentication state to true
         setIsAuthenticated(true);
