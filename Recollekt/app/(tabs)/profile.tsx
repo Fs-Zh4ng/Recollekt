@@ -10,6 +10,7 @@ export default function ProfileScreen() {
   const { user } = useContext(UserContext) as UserContextType;
   const { setIsAuthenticated } = useContext(AuthContext);
     const navigation = useNavigation();
+    console.log(user.username);
 
   const handleSubmit = async () => {
     const token = await AsyncStorage.getItem('token');
@@ -24,7 +25,7 @@ export default function ProfileScreen() {
       // Optionally, navigate to the login screen or perform any other action
       navigation.reset({
         index: 0,
-        routes: [{ name: 'login/login' as never }], // Set the new stack with only the (tabs) route
+        routes: [{ name: 'login/login' as never }], // Set the new stack with only the login route
       }); 
     }
   };

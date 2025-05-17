@@ -2,39 +2,77 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const Counter = require('./models/Counter'); // Counter model for unique userId
+const User = require('./models/User'); // User model
+const Album = require('./models/Album'); 
 
 const app = express();
-app.use(express.json()); // Middleware to parse JSON requests
+app.use(express.json());
 
-// MongoDB connection
+// Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/recollekt', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
 
-// MongoDB User Schema and Model
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+mongoose.connection.on('connected', () => {
+  console.log('Connected to MongoDB');
 });
 
-const User = mongoose.model('User', userSchema);
+mongoose.connection.on('error', (err) => {
+  console.error('Error connecting to MongoDB:', err);
+});
 
-// API Endpoints
-// Define a route for the root path
-app.get('/', (req, res) => {
-  res.send('Welcome to the Recollekt API!');
+app.get('/albums', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    const albums = await Album.find({ creatorId: userId }); // Fetch albums for the current user
+    res.status(200).json({ albums });
+  } catch (error) {
+    console.error('Error fetching albums:', error);
+    res.status(500).json({ error: 'Failed to fetch albums' });
+  }
+});
+
+app.post('/albums', async (req, res) => {
+  const { title, coverImage, images, creatorId } = req.body;
+  console.log('Received album creation request:', req.body);
+
+  // Validate the request body
+  if (!title || !coverImage || !creatorId) {
+    return res.status(400).json({ error: 'Title, cover image, and creator ID are required' });
+  }
+
+  try {
+    // Create a new album in the database
+    const album = new Album({
+      title,
+      coverImage,
+      images,
+      creatorId,
+    });
+    await album.save();
+    res.status(201).json({ message: 'Album created successfully', album });
+  } catch (error) {
+    console.error('Error creating album:', error);
+    res.status(500).json({ error: 'Failed to create album' });
+  }
 });
 
 // 1. User Registration
-app.post('/signup', async (req, res) => {
+app.post('/register', async (req, res) => {
   const { username, password } = req.body;
-  console.log('Received sign-up request:', req.body);
 
-  // Check if username already exists
-  const existingUser = await User.findOne({ username });
-  if (existingUser) {
-    return res.status(400).json({ error: 'Username already exists' });
+  // Validate username and password
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   } else if (password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(password)) {
@@ -46,11 +84,24 @@ app.post('/signup', async (req, res) => {
   // Hash the password
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  // Get the next userId from the Counter collection
+  let userId;
+  try {
+    const counter = await Counter.findOneAndUpdate(
+      { name: 'userId' },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true } // Create the counter if it doesn't exist
+    );
+    userId = counter.seq;
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to generate user ID' });
+  }
+
   // Create a new user
-  const user = new User({ username, password: hashedPassword });
+  const user = new User({ username, password: hashedPassword, userId });
   await user.save();
 
-  res.status(201).json({ message: 'User registered successfully' });
+  res.status(201).json({ message: 'User registered successfully', userId });
 });
 
 // 2. User Login
@@ -69,9 +120,9 @@ app.post('/login', async (req, res) => {
   if (!isPasswordValid) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
-
+  console.log(user._id);
   // Generate a JWT token
-  const token = jwt.sign({ id: user._id }, 'your_jwt_secret', { expiresIn: '1h' });
+  const token = jwt.sign({ id: user._id }, 'your_jwt_secret', { expiresIn: '24h' });
 
   res.json({ token });
 });
