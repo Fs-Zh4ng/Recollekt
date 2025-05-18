@@ -8,6 +8,11 @@ import { UserContext } from '../UserContext'; // Adjust the path to your UserCon
 export default function LoginScreen() {
   const navigation = useNavigation();
   const { setIsAuthenticated } = useContext(AuthContext);
+  const userContext = useContext(UserContext); // Adjust the path to your UserContext file
+  if (!userContext) {
+    throw new Error('UserContext is undefined. Please ensure it is properly provided.');
+  }
+  const { setUser } = userContext;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,8 +85,10 @@ export default function LoginScreen() {
           routes: [{ name: '(tabs)' as never }], // Set the new stack with only the (tabs) route
         }); // Navigate to the home screen
 
-        // Set authentication state to true
+        // Set authentication state to true\
+        setUser({ username });
         setIsAuthenticated(true);
+        
       } else {
         Alert.alert('Login Failed', data.error || 'Invalid credentials');
       }

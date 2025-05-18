@@ -3,9 +3,14 @@ import { ThemedView } from '@/components/ThemedView';
 import { StyleSheet, TouchableOpacity, Text, FlatList, View, Image, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from './types';
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
+
+
 
 export default function HomeScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const [albums, setAlbums] = useState([]);
 
   // Fetch albums from the backend
@@ -49,16 +54,23 @@ export default function HomeScreen() {
     }, [])
   );
 
+  const handleViewAlbum = (album: { title: string; coverImage: string; images: string[] }) => {
+    navigation.navigate('Albums/ViewAlbum', album); // Pass album details as params
+  };
+
   const handleCreate = () => {
     console.log('Create button pressed');
     navigation.navigate('Create' as never); // Navigate to the CreateAlbum screen
   };
 
+  
   const renderAlbum = ({ item }: { item: any }) => (
-    <View style={styles.albumContainer}>
-      <Image source={{ uri: item.coverImage }} style={styles.albumCover} />
-      <Text style={styles.albumTitle}>{item.title}</Text>
-    </View>
+    <TouchableOpacity onPress={() => handleViewAlbum(item)}>
+      <View style={styles.albumContainer}>
+        <Image source={{ uri: item.coverImage }} style={styles.albumCover} />
+        <Text style={styles.albumTitle}>{item.title}</Text>
+      </View>
+    </TouchableOpacity>
   );
 
   return (
