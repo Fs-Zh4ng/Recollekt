@@ -29,8 +29,6 @@ export default function HomeScreen() {
         },
       });
 
-      console.log('Response:', response);
-
       if (response.ok) {
         const data = await response.json();
         setAlbums(data.albums); // Assuming the backend returns an array of albums
@@ -54,7 +52,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  const handleViewAlbum = (album: { title: string; coverImage: string; images: string[] }) => {
+  const handleViewAlbum = (album: { _id: string; title: string; coverImage: string; images: string[] }) => {
     navigation.navigate('Albums/ViewAlbum', album); // Pass album details as params
   };
 

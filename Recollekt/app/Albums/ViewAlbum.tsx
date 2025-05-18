@@ -1,14 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Image, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../(tabs)/types'; // Adjust the path as necessary
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
 
 export default function ViewAlbum() {
   const route = useRoute<ViewAlbumRouteProp>();
-  const navigation = useNavigation();
-  const { title, coverImage, images } = route.params;
+  const navigation = useNavigation<NavigationProp>();
+  const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
+
+
+  const [title, setTitle] = useState(initialTitle);
+  const [coverImage, setCoverImage] = useState(initialCoverImage);
+  const [images, setImages] = useState(initialImages);
 
   const renderImage = ({ item }: { item: string }) => (
     <Image source={{ uri: item }} style={styles.albumImage} />
@@ -18,9 +26,45 @@ export default function ViewAlbum() {
     navigation.goBack(); // Navigate back to the previous screen
   };
 
-  // const handleEdit = () => {
-  //   navigation.navigate('EditAlbum', route.params); // Navigate to an EditAlbum screen (if implemented)
-  // };
+  const handleEdit = () => {
+    navigation.navigate('Albums/EditAlbum', route.params); // Navigate to an EditAlbum screen (if implemented)
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchUpdatedAlbum = async () => {
+        try {
+          const token = await AsyncStorage.getItem('token'); // Retrieve the token from AsyncStorage
+          if (!token) {
+            console.error('No token found');
+            return;
+          }
+  
+          const response = await fetch(`http://localhost:3000/albums/${_id}`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`, // Include the token in the Authorization header
+            },
+          });
+  
+          console.log('Response:', response);
+  
+          if (response.ok) {
+            const updatedAlbum = await response.json();
+            setTitle(updatedAlbum.title);
+            setCoverImage(updatedAlbum.coverImage);
+            setImages(updatedAlbum.images);
+          } else {
+            console.error('Failed to fetch updated album');
+          }
+        } catch (error) {
+          console.error('Error fetching updated album:', error);
+        }
+      };
+  
+      fetchUpdatedAlbum();
+    }, [_id])
+  );
 
   return (
     <View style={styles.container}>
@@ -29,7 +73,7 @@ export default function ViewAlbum() {
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Text style={styles.buttonText}>Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.editButton}>
+        <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
           <Text style={styles.buttonText}>Edit</Text>
         </TouchableOpacity>
       </View>
