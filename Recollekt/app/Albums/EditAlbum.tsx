@@ -112,6 +112,7 @@ export default function EditAlbum() {
 
   return (
     <View style={styles.container}>
+    
       {/* Title Input */}
       <Text style={styles.label}>Album Title</Text>
       <TextInput

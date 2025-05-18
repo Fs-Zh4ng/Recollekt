@@ -4,10 +4,16 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const Counter = require('./models/Counter'); // Counter model for unique userId
 const User = require('./models/User'); // User model
-const Album = require('./models/Album'); 
+const Album = require('./models/Album');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const fs = require('fs');
+const ExifParser = require('exif-parser');
+
 
 const app = express();
 app.use(express.json());
+app.use(bodyParser.json());
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/recollekt', {
@@ -23,20 +29,36 @@ mongoose.connection.on('error', (err) => {
   console.error('Error connecting to MongoDB:', err);
 });
 
+const extractExifTimestamp = (filePath) => {
+  try {
+    const buffer = fs.readFileSync(filePath); // Read the image file
+    const parser = ExifParser.create(buffer);
+    const result = parser.parse();
+
+    // Return the EXIF DateTimeOriginal or null if not available
+    return result.tags.DateTimeOriginal
+      ? new Date(result.tags.DateTimeOriginal * 1000) // Convert EXIF timestamp to JavaScript Date
+      : null;
+  } catch (error) {
+    console.error(`Error extracting EXIF metadata for file ${filePath}:`, error);
+    return null; // Return null if EXIF metadata cannot be extracted
+  }
+};
+
+
+
 app.put('/edit-album', async (req, res) => {
   const { id, title, coverImage, images } = req.body;
-  console.log('Received album edit request:', req.body);
 
-  // Validate the request body
-  if (!title || !coverImage || !images) {
-    return res.status(400).json({ error: 'Album ID, title, cover image, and images are required' });
-  }
+  const updatedImages = images.map((image) => ({
+    url: image.url || image, // Handle cases where only the URL is provided
+    timestamp: image.timestamp || new Date(), // Add a timestamp if not provided
+  }));
 
   try {
-    // Find the album by ID and update it
     const album = await Album.findByIdAndUpdate(
       id,
-      { title, coverImage, images },
+      { title, coverImage, images: updatedImages },
       { new: true }
     );
 
@@ -48,6 +70,33 @@ app.put('/edit-album', async (req, res) => {
   } catch (error) {
     console.error('Error updating album:', error);
     res.status(500).json({ error: 'Failed to update album' });
+  }
+});
+
+app.delete('/albums/:id', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1]; // Extract the token from the Authorization header
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' }); // Return 401 if no token is provided
+  }
+
+  try {
+    // Verify the token
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace 'your_jwt_secret' with your actual JWT secret
+    const userId = decodedToken.id; // Extract the user ID from the token
+
+    // Find the album by ID and ensure it belongs to the authenticated user
+    const album = await Album.findOneAndDelete({ _id: req.params.id, creatorId: userId });
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found' }); // Return 404 if the album is not found
+    }
+
+    res.status(200).json({ message: 'Album deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting album:', error);
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token' }); // Return 401 if the token is invalid
+    }
+    res.status(500).json({ error: 'Failed to delete album' }); // Return 500 for other errors
   }
 }
 );
@@ -114,15 +163,26 @@ app.post('/albums', async (req, res) => {
   }
 
   try {
+    // Add a timestamp to each image
+    const imagesWithTimestamps = (images || []).map((image) => {
+      const filePath = (typeof image === 'string' ? image : image.url).replace('file://', ''); // Handle string or object
+      const exifTimestamp = extractExifTimestamp(filePath); // Extract EXIF metadata
+      return {
+        url: typeof image === 'string' ? image : image.url, // Use the string directly if it's not an object
+        timestamp: exifTimestamp || new Date(), // Use EXIF timestamp or fallback to current date
+      };
+    });
+
     // Create a new album in the database
     const album = new Album({
-      id: album._id, // Use the generated ID from MongoDB
       title,
       coverImage,
-      images,
+      images: imagesWithTimestamps,
       creatorId,
     });
-    await album.save();
+
+    await album.save(); // Save the album to the database
+
     res.status(201).json({ message: 'Album created successfully', album });
   } catch (error) {
     console.error('Error creating album:', error);

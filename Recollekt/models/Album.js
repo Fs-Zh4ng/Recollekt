@@ -3,9 +3,13 @@ const mongoose = require('mongoose');
 const albumSchema = new mongoose.Schema({
   title: { type: String, required: true },
   coverImage: { type: String, required: true },
-  images: { type: [String], required: true },
+  images: [
+    {
+      url: { type: String, required: true }, // Image URL
+      timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
+    },
+  ],
   creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  createdAt: { type: Date, default: Date.now },
 });
 
 const Album = mongoose.model('Album', albumSchema);
