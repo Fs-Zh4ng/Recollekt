@@ -6,11 +6,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
 
 export default function ViewAlbum() {
   const route = useRoute<ViewAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
+  const navi2 = useNavigation();
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
 
 
@@ -32,7 +34,8 @@ export default function ViewAlbum() {
   );
 
   const handleBack = () => {
-    navigation.goBack(); // Navigate back to the previous screen
+    navi2.navigate('(tabs)' as never);
+    console.log('Available routes:', navigation.getState().routes);// Navigate back to the previous screen
   };
 
   const handleEdit = () => {
@@ -55,7 +58,7 @@ export default function ViewAlbum() {
       });
 
       if (response.ok) {
-        navigation.goBack(); // Navigate back to the previous screen after deletion
+        navi2.navigate('(tabs)' as never); // Navigate back to the previous screen after deletion
       } else {
         console.error('Failed to delete album');
       }

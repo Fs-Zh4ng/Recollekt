@@ -5,7 +5,7 @@ import { useNavigation, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, '(tabs)/index'>;
 
 
 
@@ -52,7 +52,7 @@ export default function HomeScreen() {
     }, [])
   );
 
-  const handleViewAlbum = (album: { _id: string; title: string; coverImage: string; images: string[] }) => {
+  const handleViewAlbum = (album: { _id: string; title: string; coverImage: string; images: {url: string; timestamp: string}[] }) => {
     navigation.navigate('Albums/ViewAlbum', album); // Pass album details as params
   };
 

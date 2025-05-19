@@ -17,8 +17,11 @@ export default function EditAlbum() {
 
   const [title, setTitle] = useState(initialTitle);
   const [coverImage, setCoverImage] = useState(initialCoverImage);
-  const [images, setImages] = useState<string[]>(initialImages);
-
+  const [images, setImages] = useState<{ url: string; timestamp: string }[]>(
+      (initialImages || []).map((image) =>
+        typeof image === 'string' ? { url: image, timestamp: '' } : image
+      )
+    );
   const handlePickCoverImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -40,12 +43,15 @@ export default function EditAlbum() {
 
     if (!result.canceled) {
       const selectedImages = result.assets.map((asset) => asset.uri);
-      setImages((prevImages) => [...prevImages, ...selectedImages]);
+      setImages((prevImages) => [
+        ...prevImages,
+        ...selectedImages.map((uri) => ({ url: uri, timestamp: '' })),
+      ]);
     }
   };
 
   const handleDeleteImage = (imageUri: string) => {
-    setImages((prevImages) => prevImages.filter((img) => img !== imageUri));
+    setImages((prevImages) => prevImages.filter((img) => img.url !== imageUri));
   };
 
   const handleSave = async () => {
@@ -101,10 +107,13 @@ export default function EditAlbum() {
     navigation.goBack(); // Navigate back to the previous screen without saving
   };
 
-  const renderImage = ({ item }: { item: string }) => (
+  const renderImage = ({ item }: { item: { url: string; timestamp: string } }) => (
     <View style={styles.imageContainer}>
-      <Image source={{ uri: item }} style={styles.albumImage} />
-      <TouchableOpacity onPress={() => handleDeleteImage(item)} style={styles.deleteButton}>
+      <Image source={{ uri: item.url }} style={styles.albumImage} />
+      <Text style={styles.timestampText}>
+        Taken on: {new Date(item.timestamp).toLocaleString()}
+      </Text>
+      <TouchableOpacity onPress={() => handleDeleteImage(item.url)} style={styles.deleteButton}>
         <Text style={styles.deleteButtonText}>Delete</Text>
       </TouchableOpacity>
     </View>
@@ -233,5 +242,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 20,
+  },
+  timestampText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
   },
 });
