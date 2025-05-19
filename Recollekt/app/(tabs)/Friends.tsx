@@ -38,22 +38,6 @@ export default function ProfileScreen() {
     fetchPendingRequests();
   }, []);
 
-  const handleLogout = async () => {
-    const token = await AsyncStorage.getItem('token');
-    if (!token) {
-      Alert.alert('Error', 'No token found');
-      return;
-    } else {
-      console.log('Token:', token);
-      await AsyncStorage.removeItem('token');
-      setIsAuthenticated(false);
-      Alert.alert('Success', 'Logged out successfully');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'login/login' as never }], // Set the new stack with only the login route
-      });
-    }
-  };
 
   const handleSendFriendRequest = async () => {
     if (!friendRequestUsername) {
@@ -126,17 +110,44 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       {/* User Profile Image */}
-      <Image source={{ uri: user.profileImage }} style={styles.profileImage} />
-
-      {/* Username */}
-      <Text style={styles.username}>{user.username}</Text>
 
 
+      {/* Friends List */}
+      <Text style={styles.sectionTitle}>Friends:</Text>
+      {user.friends && user.friends.length > 0 ? (
+        <FlatList
+          data={user.friends}
+          keyExtractor={(item, index) => index.toString()}
+          renderItem={renderFriend}
+          style={styles.friendsList}
+        />
+      ) : (
+        <Text style={styles.noFriendsText}>You have no friends yet.</Text>
+      )}
 
-      {/* Logout Button */}
-      <TouchableOpacity onPress={handleLogout} style={styles.dltButton}>
-                <Text style={styles.buttonText}>Log Out</Text>
-              </TouchableOpacity>
+      {/* Friend Requests */}
+      <Text style={styles.sectionTitle}>Pending Friend Requests:</Text>
+      {pendingRequests.length > 0 ? (
+        <FlatList
+          data={pendingRequests}
+          keyExtractor={(item, index) => index.toString()}
+          renderItem={renderPendingRequest}
+          style={styles.pendingRequestsList}
+        />
+      ) : (
+        <Text style={styles.noPendingRequestsText}>No pending friend requests.</Text>
+      )}
+
+      {/* Send Friend Request */}
+      <Text style={styles.sectionTitle}>Send Friend Request:</Text>
+      <TextInput
+        style={styles.friendRequestInput}
+        placeholder="Enter username"
+        value={friendRequestUsername}
+        onChangeText={setFriendRequestUsername}
+      />
+      <Button title="Send Request" onPress={handleSendFriendRequest} />
+
     </View>
   );
 }
@@ -151,13 +162,13 @@ const styles = StyleSheet.create({
     paddingTop: 70,
   },
   profileImage: {
-    width: 200,
-    height: 200,
+    width: 100,
+    height: 100,
     borderRadius: 50,
     marginBottom: 20,
   },
   username: {
-    fontSize: 30,
+    fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,
   },
@@ -208,20 +219,5 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     borderRadius: 5,
     marginBottom: 10,
-  },
-  dltButton: {
-    backgroundColor: '#FF3B30',
-    padding: 15,
-    borderRadius: 10,
-    margin: 30,
-    marginTop: 100,
-    bottom: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });

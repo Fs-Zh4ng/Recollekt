@@ -7,6 +7,7 @@ import { UserContext } from '../UserContext'; // Adjust the path to your UserCon
 
 export default function LoginScreen() {
   const navigation = useNavigation();
+  ``
   const { setIsAuthenticated } = useContext(AuthContext);
   const userContext = useContext(UserContext); // Adjust the path to your UserContext file
   if (!userContext) {
@@ -74,8 +75,10 @@ export default function LoginScreen() {
         },
         body: JSON.stringify({ username, password }),
       });
+      console.log(response);
 
       const data = await response.json();
+      console.log('Login Response:', data);
 
       if (response.ok) {
         // Save the token (optional, for future API requests)
@@ -86,7 +89,14 @@ export default function LoginScreen() {
         }); // Navigate to the home screen
 
         // Set authentication state to true\
-        setUser({ username });
+        console.log(data.username);
+        console.log(data.friends);
+        console.log(data.profileImage);
+        setUser({
+          username: data.username,
+          friends: data.friends || [], // Use an empty array if friends are not provided
+          profileImage: data.profileImage || '', // Use an empty string if profileImage is not provided
+        }); // Set user data in context
         setIsAuthenticated(true);
         
       } else {
@@ -167,6 +177,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
     padding: 20,
+    bottom: 50,
   },
   title: {
     fontSize: 24,

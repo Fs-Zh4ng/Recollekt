@@ -45,6 +45,116 @@ const extractExifTimestamp = (filePath) => {
   }
 };
 
+app.get('/friends/pending', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    const user = await User.findById(userId).populate('pendingRequests', 'username'); // Populate usernames
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Extract usernames from the populated pendingRequests
+    const pendingRequests = user.pendingRequests.map((requester) => requester.username);
+
+    res.status(200).json({ pendingRequests });
+  } catch (error) {
+    console.error('Error fetching pending requests:', error);
+    res.status(500).json({ error: 'Failed to fetch pending requests' });
+  }
+});
+
+app.post('/friends/request', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const { username: targetUsername } = req.body;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!targetUsername) {
+    return res.status(400).json({ error: 'Target username is required' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    const targetUser = await User.findOne({ username: targetUsername });
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found' });
+    }
+
+    // Add the friend request to the target user's pendingRequests
+    if (!targetUser.pendingRequests.includes(userId)) {
+      targetUser.pendingRequests.push(userId);
+      await targetUser.save();
+    }
+
+    res.status(200).json({ message: `Friend request sent to ${targetUsername}` });
+  } catch (error) {
+    console.error('Error sending friend request:', error);
+    res.status(500).json({ error: 'Failed to send friend request' });
+  }
+});
+
+// Approve Friend Request
+app.post('/friends/approve', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const { username: requesterUsername } = req.body;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!requesterUsername) {
+    return res.status(400).json({ error: 'Requester username is required' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const requester = await User.findOne({ username: requesterUsername });
+    if (!requester) {
+      return res.status(404).json({ error: 'Requester not found' });
+    }
+
+    // Check if the requester is in the user's pendingRequests
+    if (!user.pendingRequests.includes(requester._id.toString())) {
+      return res.status(400).json({ error: 'No pending request from this user' });
+    }
+
+    // Approve the friend request
+    user.friends.push(requester.username);
+    requester.friends.push(user.username);
+
+    // Remove the request from pendingRequests
+    user.pendingRequests = user.pendingRequests.filter(
+      (requestId) => requestId !== requester._id.toString()
+    );
+
+    await user.save();
+    await requester.save();
+
+    res.status(200).json({ message: `Friend request from ${requesterUsername} approved` });
+  } catch (error) {
+    console.error('Error approving friend request:', error);
+    res.status(500).json({ error: 'Failed to approve friend request' });
+  }
+});
+
 
 
 app.put('/edit-album', async (req, res) => {
@@ -191,41 +301,38 @@ app.post('/albums', async (req, res) => {
 });
 
 // 1. User Registration
-app.post('/register', async (req, res) => {
-  const { username, password } = req.body;
+app.post('/signup', async (req, res) => {
+  const { username, password, profileImage, friends } = req.body;
 
-  // Validate username and password
+  // Validate the request body
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
-  } else if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
-  } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/.test(password)) {
-    return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
-  } else if (!/^[a-zA-Z0-9]+$/.test(username)) {
-    return res.status(400).json({ error: 'Username can only contain alphanumeric characters' });
   }
 
-  // Hash the password
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  // Get the next userId from the Counter collection
-  let userId;
   try {
-    const counter = await Counter.findOneAndUpdate(
-      { name: 'userId' },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true } // Create the counter if it doesn't exist
-    );
-    userId = counter.seq;
+    // Assign default values if not provided
+    const defaultProfileImage = '/Users/Ferdinand/NoName/Recollekt/assets/images/DefProfile.webp'; // Replace with your default image URL
+    const userProfileImage = profileImage || defaultProfileImage;
+    const userFriends = friends || []; // Use an empty array if no friends are provided
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create a new user in the database
+    const user = new User({
+      username,
+      password: hashedPassword,
+      profileImage: userProfileImage,
+      friends: userFriends,
+    });
+
+    await user.save(); // Save the user to the database
+
+    res.status(201).json({ message: 'User registered successfully', user });
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to generate user ID' });
+    console.error('Error registering user:', error);
+    res.status(500).json({ error: 'Failed to register user' });
   }
-
-  // Create a new user
-  const user = new User({ username, password: hashedPassword, userId });
-  await user.save();
-
-  res.status(201).json({ message: 'User registered successfully', userId });
 });
 
 // 2. User Login
@@ -248,7 +355,12 @@ app.post('/login', async (req, res) => {
   // Generate a JWT token
   const token = jwt.sign({ id: user._id }, 'your_jwt_secret', { expiresIn: '24h' });
 
-  res.json({ token });
+  res.status(200).json({
+    token,
+    username: user.username,
+    friends: user.friends || [], // Default to an empty array if no friends
+    profileImage: user.profileImage || '', // Default to an empty string if no profile image
+  });
 });
 
 // Start the server
