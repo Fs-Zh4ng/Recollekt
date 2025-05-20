@@ -73,12 +73,17 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <Text style={{ fontSize: 40, fontWeight: 'bold', textAlign: 'center', marginTop: 20, marginBottom: 20, fontFamily: 'Inter' }}>
+        Your Albums
+      </Text>
       <FlatList
         data={albums}
         keyExtractor={(item) => item._id} // Assuming each album has a unique `_id`
         renderItem={renderAlbum}
+        numColumns={2}
         contentContainerStyle={styles.albumList}
         ListEmptyComponent={<Text style={styles.emptyText}>No albums found</Text>}
+        style={{ width: '100%', alignSelf: 'center' }} // Add margin to the d bottom of the FlatList
       />
       <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
         <Text style={styles.plusSign}>+</Text>
@@ -98,12 +103,13 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   albumContainer: {
-    marginBottom: 20,
+    margin: 5,
+    marginBottom: 30,
     alignItems: 'center',
   },
   albumCover: {
-    width: 150,
-    height: 150,
+    width: '50%',
+    aspectRatio: 1,
     borderRadius: 10,
     marginBottom: 10,
   },

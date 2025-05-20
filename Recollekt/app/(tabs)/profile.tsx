@@ -4,6 +4,7 @@ import { UserContext, UserContextType } from '../UserContext';
 import { AuthContext } from '../_layout'; // Adjust the path to your UserContext file
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function ProfileScreen() {
   const { user, setUser } = useContext(UserContext) as UserContextType;
@@ -13,30 +14,60 @@ export default function ProfileScreen() {
   const [friendRequestUsername, setFriendRequestUsername] = useState('');
   const [pendingRequests, setPendingRequests] = useState<string[]>([]);
 
-  useEffect(() => {
-    // Fetch pending friend requests from the backend
-    const fetchPendingRequests = async () => {
-      try {
+
+  const [profileImage, setProfileImage] = useState(user.profileImage);
+
+  const handleChangeProfilePicture = async () => {
+    try {
+      // Request permission to access the media library
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Denied', 'You need to allow access to your media library to change the profile picture.');
+        return;
+      }
+
+      // Open the image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1], // Square aspect ratio
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        const selectedImage = result.assets[0].uri; // Get the selected image URI
+        setProfileImage(selectedImage);
+
+        // Update the profile picture on the backend
         const token = await AsyncStorage.getItem('token');
-        const response = await fetch('http://localhost:3000/friends/pending', {
-          method: 'GET',
+        if (!token) {
+          Alert.alert('Error', 'No token found. Please log in again.');
+          return;
+        }
+
+        const response = await fetch('http://localhost:3000/user/profile-picture', {
+          method: 'PUT',
           headers: {
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
+          body: JSON.stringify({ profileImage: selectedImage }),
         });
-        const data = await response.json();
-        if (response.ok) {
-          setPendingRequests(data.pendingRequests || []);
-        } else {
-          console.error('Failed to fetch pending requests:', data.error);
-        }
-      } catch (error) {
-        console.error('Error fetching pending requests:', error);
-      }
-    };
 
-    fetchPendingRequests();
-  }, []);
+        if (response.ok) {
+          const updatedUser = await response.json();
+          setUser(updatedUser); // Update the user context with the new profile picture
+          Alert.alert('Success', 'Profile picture updated successfully!');
+        } else {
+          Alert.alert('Error', 'Failed to update profile picture.');
+        }
+      }
+    } catch (error) {
+      console.error('Error changing profile picture:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again later.');
+    }
+  };
+
 
   const handleLogout = async () => {
     const token = await AsyncStorage.getItem('token');
@@ -55,78 +86,14 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSendFriendRequest = async () => {
-    if (!friendRequestUsername) {
-      Alert.alert('Error', 'Please enter a username');
-      return;
-    }
-
-    try {
-      const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/friends/request', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ username: friendRequestUsername }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        Alert.alert('Success', `Friend request sent to ${friendRequestUsername}`);
-        setFriendRequestUsername('');
-      } else {
-        Alert.alert('Error', data.error || 'Failed to send friend request');
-      }
-    } catch (error) {
-      console.error('Error sending friend request:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
-    }
-  };
-
-  const handleApproveRequest = async (username: string) => {
-    try {
-      const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/friends/approve', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ username }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        Alert.alert('Success', `Friend request from ${username} approved`);
-        setPendingRequests((prev) => prev.filter((request) => request !== username));
-        setUser((prevUser) => ({
-          ...prevUser,
-          friends: [...prevUser.friends, username],
-        }));
-      } else {
-        Alert.alert('Error', data.error || 'Failed to approve friend request');
-      }
-    } catch (error) {
-      console.error('Error approving friend request:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
-    }
-  };
-
-  const renderPendingRequest = ({ item }: { item: string }) => (
-    <View style={styles.pendingRequestItem}>
-      <Text style={styles.pendingRequestText}>{item}</Text>
-      <Button title="Approve" onPress={() => handleApproveRequest(item)} />
-    </View>
-  );
-
-  const renderFriend = ({ item }: { item: string }) => (
-    <Text style={styles.friendItem}>{item}</Text>
-  );
-
+  
   return (
     <View style={styles.container}>
       {/* User Profile Image */}
-      <Image source={{ uri: user.profileImage }} style={styles.profileImage} />
+      <TouchableOpacity onPress={handleChangeProfilePicture}>
+        <Image source={{ uri: profileImage }} style={styles.profileImage} />
+        <Text style={styles.changePictureText}>Change Profile Picture</Text>
+      </TouchableOpacity>
 
       {/* Username */}
       <Text style={styles.username}>{user.username}</Text>
@@ -149,6 +116,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 100,
     paddingTop: 70,
+  },
+  changePictureText: {
+    fontSize: 18,
+    color: '#007AFF',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   profileImage: {
     width: 200,

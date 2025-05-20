@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserContext, UserContextType } from '../UserContext';
@@ -99,39 +99,49 @@ export default function CreateAlbum() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>Album Name</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter album name"
-        value={albumName}
-        onChangeText={setAlbumName}
-      />
+    <KeyboardAvoidingView
+  style={{ flex: 1 }}
+  behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+>
+  <ScrollView
+    contentContainerStyle={styles.scrollContainer} // Use flexGrow for scrollable content
+    showsVerticalScrollIndicator={false} // Optional: Hide the scroll indicator
+  >
+    <Text style={styles.label}>Album Title</Text>
+    <TextInput
+      style={styles.input}
+      placeholder="Enter album title"
+      value={albumName}
+      onChangeText={setAlbumName}
+    />
 
-      <Text style={styles.label}>Cover Image</Text>
-      {coverImage ? (
-        <Image source={{ uri: coverImage }} style={styles.imagePreview} />
-      ) : (
-        <TouchableOpacity style={styles.imageButton} onPress={handlePickCoverImage}>
-          <Text style={styles.imageButtonText}>Pick Cover Image</Text>
-        </TouchableOpacity>
-      )}
+    <Text style={styles.label}>Cover Image</Text>
+    <TouchableOpacity style={styles.imageButton} onPress={handlePickCoverImage}>
+      <Text style={styles.imageButtonText}>Select Cover Image</Text>
+    </TouchableOpacity>
+    {coverImage ? (
+      <Image source={{ uri: coverImage }} style={styles.coverImagePreview} />
+    ) : null}
 
-      <Text style={styles.label}>Album Images</Text>
-      <TouchableOpacity style={styles.imageButton} onPress={handleAddImages}>
-        <Text style={styles.imageButtonText}>Add Images</Text>
-      </TouchableOpacity>
+    <Text style={styles.label}>Album Images</Text>
+    <TouchableOpacity style={styles.imageButton} onPress={handleAddImages}>
+      <Text style={styles.imageButtonText}>Add Images</Text>
+    </TouchableOpacity>
 
-      <View style={styles.imageList}>
-        {albumImages.map((imageUri, index) => (
-          <Image key={index} source={{ uri: imageUri }} style={styles.imagePreviewSmall} />
-        ))}
-      </View>
-
-      <Button title="Create Album" onPress={handleCreateAlbum} />
+    <View style={styles.imageList}>
+      {albumImages.map((imageUri, index) => (
+        <Image key={index} source={{ uri: imageUri }} style={styles.imagePreviewSmall} />
+      ))}
     </View>
+
+    <TouchableOpacity onPress={handleCreateAlbum} style={styles.editButton}>
+      <Text style={styles.buttonText}>Create</Text>
+    </TouchableOpacity>
+  </ScrollView>
+</KeyboardAvoidingView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
@@ -139,11 +149,25 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#fff',
     top: 50,
+    marginBottom: 100,
+  },
+  scrollContainer: {
+    flexGrow: 1, // Ensures the content inside ScrollView is scrollable
+    padding: 20,
+    backgroundColor: '#fff',
+    top: 50, // Add padding to prevent cutoff at the bottom
   },
   label: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 10,
+    textAlign: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   input: {
     borderWidth: 1,
@@ -179,6 +203,18 @@ const styles = StyleSheet.create({
   imageList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginBottom: 20,
+  },
+  editButton: {
+    backgroundColor: '#28ad4b',
+    padding: 20,
+    borderRadius: 10,
+    marginBottom: 100,
+  },
+  coverImagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 5,
     marginBottom: 20,
   },
 });

@@ -111,7 +111,7 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       {/* User Profile Image */}
 
-
+    <View style={styles.section}>
       {/* Friends List */}
       <Text style={styles.sectionTitle}>Friends:</Text>
       {user.friends && user.friends.length > 0 ? (
@@ -124,7 +124,8 @@ export default function ProfileScreen() {
       ) : (
         <Text style={styles.noFriendsText}>You have no friends yet.</Text>
       )}
-
+    </View>
+    <View style={styles.section}>
       {/* Friend Requests */}
       <Text style={styles.sectionTitle}>Pending Friend Requests:</Text>
       {pendingRequests.length > 0 ? (
@@ -137,7 +138,8 @@ export default function ProfileScreen() {
       ) : (
         <Text style={styles.noPendingRequestsText}>No pending friend requests.</Text>
       )}
-
+      </View>
+      <View style={styles.section}>
       {/* Send Friend Request */}
       <Text style={styles.sectionTitle}>Send Friend Request:</Text>
       <TextInput
@@ -146,8 +148,10 @@ export default function ProfileScreen() {
         value={friendRequestUsername}
         onChangeText={setFriendRequestUsername}
       />
-      <Button title="Send Request" onPress={handleSendFriendRequest} />
-
+              <TouchableOpacity style={styles.sendButton} onPress={handleSendFriendRequest}>
+          <Text style={styles.sendButtonText}>Send Request</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -160,6 +164,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 100,
     paddingTop: 70,
+  },
+  sendButton: {
+    backgroundColor: '#007AFF',
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  sendButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  section: {
+    width: '100%', // Make the section span the full width
+    marginBottom: 30,
+    padding: 20, // Adjust padding for inner content
+    borderRadius: 10,
+    backgroundColor: '#f9f9f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   profileImage: {
     width: 100,

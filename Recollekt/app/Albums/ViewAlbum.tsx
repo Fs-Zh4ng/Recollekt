@@ -1,12 +1,28 @@
-import React, { useState } from 'react';
-import { View, Text, Image, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRoute, RouteProp, useNavigation, useFocusEffect } from '@react-navigation/native';
-import { RootStackParamList } from '../(tabs)/types'; // Adjust the path as necessary
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  Dimensions,
+} from 'react-native';
+import {
+  useRoute,
+  RouteProp,
+  useNavigation,
+  useFocusEffect,
+} from '@react-navigation/native';
+import { RootStackParamList } from '../(tabs)/types';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ImageModal from 'react-native-image-modal';
+import * as FileSystem from 'expo-file-system';
 
-
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
 type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
 
 export default function ViewAlbum() {
@@ -15,36 +31,80 @@ export default function ViewAlbum() {
   const navi2 = useNavigation();
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
 
-
   const [title, setTitle] = useState(initialTitle);
   const [coverImage, setCoverImage] = useState(initialCoverImage);
-  const [images, setImages] = useState<{ url: string; timestamp: string }[]>(
-    (initialImages || []).map((image) =>
-      typeof image === 'string' ? { url: image, timestamp: '' } : image
+
+  const [images, setImages] = useState<
+    { url: string; base64Uri: string | null; timestamp: string }[]
+  >(
+    (initialImages || []).map((image: string | { url: string; timestamp: string }) =>
+      typeof image === 'string'
+        ? {
+            url: image,
+            base64Uri: image.startsWith('file://') ? null : image,
+            timestamp: '',
+          }
+        : {
+            ...image,
+            base64Uri: image.url.startsWith('file://') ? null : image.url,
+          }
     )
   );
 
-  const renderImage = ({ item }: { item: { url: string; timestamp: string } }) => (
-    <View style={styles.imageContainer}>
-      <Image source={{ uri: item.url }} style={styles.albumImage} />
-      <Text style={styles.timestampText}>
-        Taken on: {new Date(item.timestamp).toLocaleString()}
-      </Text>
-    </View>
-  );
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const handleImagePress = (index: number) => {
+    setCurrentImageIndex(index);
+    setModalVisible(true);
+  };
+
+
+  const convertToBase64 = async (uri: string) => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      if (!fileInfo.exists) {
+        console.warn('File does not exist:', uri);
+        return null;
+      }
+  
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+  
+      return `data:image/jpeg;base64,${base64}`;
+    } catch (error) {
+      console.error('Failed to convert image:', uri, error);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const fetchBase64Images = async () => {
+      const updatedImages = await Promise.all(
+        images.map(async (image) => {
+          if (!image.base64Uri && image.url?.startsWith('file://')) {
+            const base64Uri = await convertToBase64(image.url);
+            return { ...image, base64Uri };
+          }
+          return image;
+        })
+      );
+      setImages(updatedImages.filter((image) => image.url !== null) as { url: string; base64Uri: string | null; timestamp: string }[]);
+    }
+  }, []);
 
   const handleBack = () => {
     navi2.navigate('(tabs)' as never);
-    console.log('Available routes:', navigation.getState().routes);// Navigate back to the previous screen
   };
 
   const handleEdit = () => {
-    navigation.navigate('Albums/EditAlbum', route.params); // Navigate to an EditAlbum screen (if implemented)
+    navigation.navigate('Albums/EditAlbum', route.params);
   };
 
   const handleDelete = async () => {
     try {
-      const token = await AsyncStorage.getItem('token'); // Retrieve the token from AsyncStorage
+      const token = await AsyncStorage.getItem('token');
       if (!token) {
         console.error('No token found');
         return;
@@ -53,49 +113,64 @@ export default function ViewAlbum() {
       const response = await fetch(`http://localhost:3000/albums/${_id}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${token}`, // Include the token in the Authorization header
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (response.ok) {
-        navi2.navigate('(tabs)' as never); // Navigate back to the previous screen after deletion
+        Alert.alert('Success', 'Album deleted successfully');
+        navi2.navigate('(tabs)' as never);
       } else {
         console.error('Failed to delete album');
+        Alert.alert('Error', 'Failed to delete album');
       }
     } catch (error) {
       console.error('Error deleting album:', error);
+      Alert.alert('Error', 'An error occurred while deleting the album');
     }
-  }
+  };
+  const checkFileExists = async (uri: string) => {
+    const fileInfo = await FileSystem.getInfoAsync(uri);
+    console.log(fileInfo);
+    return fileInfo.exists;
+  };
 
   useFocusEffect(
     React.useCallback(() => {
       const fetchUpdatedAlbum = async () => {
         try {
-          const token = await AsyncStorage.getItem('token'); // Retrieve the token from AsyncStorage
+          const token = await AsyncStorage.getItem('token');
           if (!token) {
             console.error('No token found');
             return;
           }
-  
+
           const response = await fetch(`http://localhost:3000/albums/${_id}`, {
             method: 'GET',
             headers: {
-              Authorization: `Bearer ${token}`, // Include the token in the Authorization header
+              Authorization: `Bearer ${token}`,
             },
           });
-  
+
           if (response.ok) {
             const updatedAlbum = await response.json();
-            console.log('Updated album:', updatedAlbum);
-            // Sort images by their "taken timestamp"
-            const sortedImages = updatedAlbum.images.sort(
-              (a: { timestamp: string }, b: { timestamp: string }) =>
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-  
             setTitle(updatedAlbum.title);
             setCoverImage(updatedAlbum.coverImage);
-            setImages(sortedImages); // Set the sorted images
+            setImages(
+              updatedAlbum.images.map(
+                (image: string | { url: string; timestamp: string }) =>
+                  typeof image === 'string'
+                    ? {
+                        url: image,
+                        base64Uri: image.startsWith('file://') ? null : image,
+                        timestamp: '',
+                      }
+                    : {
+                        ...image,
+                        base64Uri: image.url.startsWith('file://') ? null : image.url,
+                      }
+              )
+            );
           } else {
             console.error('Failed to fetch updated album');
           }
@@ -103,40 +178,103 @@ export default function ViewAlbum() {
           console.error('Error fetching updated album:', error);
         }
       };
-  
+
       fetchUpdatedAlbum();
     }, [_id])
   );
 
+  const renderImage = ({ item, index }: { item: { url: string; base64Uri: string | null; timestamp: string }; index: number }) => (
+    <TouchableOpacity onPress={() => handleImagePress(index)} style={styles.imageContainer}>
+      <Image
+        resizeMode="cover"
+        style={styles.albumImage}
+        source={{ uri: item.url }}
+      />
+      <Text style={styles.timestampText}>
+        Taken on: {new Date(item.timestamp).toLocaleString()}
+      </Text>
+    </TouchableOpacity>
+  );
+  
+  useEffect(() => {
+    const checkImages = async () => {
+      const updatedImages = await Promise.all(
+        images.map(async (image) => {
+          if (image.url.startsWith('file://')) {
+            const fileExists = await checkFileExists(image.url);
+            if (!fileExists) {
+              console.warn('File not found:', image.url);
+              return { ...image, url: null };
+            }
+          }
+          return image;
+        })
+      );
+      setImages(updatedImages.filter((image) => image.url !== null) as { url: string; base64Uri: string | null; timestamp: string }[]);
+    };
+  
+    checkImages();
+  }, []);
+  
+
   return (
     <View style={styles.container}>
-      {/* Header with Back and Edit Buttons */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.buttonText}>Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
+        <TouchableOpacity onPress={() => navigation.navigate('Albums/EditAlbum', route.params)} style={styles.editButton}>
           <Text style={styles.buttonText}>Edit</Text>
         </TouchableOpacity>
-        
       </View>
 
-      {/* Album Title and Cover */}
       <View style={styles.albumHeader}>
         <Image source={{ uri: coverImage }} style={styles.coverImage} />
         <Text style={styles.title}>{title}</Text>
       </View>
 
-      {/* Album Images */}
       <FlatList
         data={images}
         keyExtractor={(item, index) => index.toString()}
         renderItem={renderImage}
+        numColumns={2}
         contentContainerStyle={styles.imageList}
       />
-      <TouchableOpacity onPress={handleDelete} style={styles.dltButton}>
-          <Text style={styles.buttonText}>Delete</Text>
-        </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => Alert.alert('Delete Album', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Delete', onPress: () => console.log('Album deleted') }])} style={styles.dltButton}>
+        <Text style={styles.buttonText}>Delete</Text>
+      </TouchableOpacity>
+
+      {/* Fullscreen Image Viewer Modal */}
+      <Modal visible={isModalVisible} transparent={true} onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <FlatList
+            data={images}
+            keyExtractor={(item, index) => index.toString()}
+            horizontal
+            pagingEnabled
+            initialScrollIndex={currentImageIndex}
+            getItemLayout={(data, index) => ({
+              length: Dimensions.get('window').width, // Use the screen width dynamically
+              offset: Dimensions.get('window').width * index,
+              index,
+            })}
+            renderItem={({ item }) => {
+              console.log('Image URL:', item.url); // Debugging log
+              return (
+                <Image
+                  source={{ uri: item.url }}
+                  style={styles.fullscreenImage}
+                  resizeMode="contain"
+                />
+              );
+            }}
+          />
+          <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -145,7 +283,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 20,
     top: 50,
   },
   header: {
@@ -160,7 +297,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     margin: 30,
     marginTop: 10,
-    bottom: 40,
+    bottom: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -168,11 +305,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     padding: 10,
     borderRadius: 5,
+    marginLeft: 20,
+    marginTop: 5,
   },
   editButton: {
     backgroundColor: '#FF9500',
     padding: 10,
     borderRadius: 5,
+    marginRight: 20,
+    marginTop: 5,
   },
   buttonText: {
     color: '#fff',
@@ -207,11 +348,38 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   imageContainer: {
-    marginBottom: 10,
+    flex: 1,
+    margin: 5,
+  },
+  imageWrapper: {
+    flex: 1,
+    margin: 5,
   },
   timestampText: {
     fontSize: 12,
     color: '#666',
     marginTop: 5,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: Dimensions.get('window').width, // Full screen width
+    height: Dimensions.get('window').height, // Full screen height
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 10,
+    borderRadius: 5,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
   },
 });

@@ -335,6 +335,33 @@ app.post('/signup', async (req, res) => {
   }
 });
 
+app.put('/user/profile-picture', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const { profileImage } = req.body;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.profileImage = profileImage; // Update the profile image
+    await user.save();
+
+    res.status(200).json(user); // Return the updated user
+  } catch (error) {
+    console.error('Error updating profile picture:', error);
+    res.status(500).json({ error: 'Failed to update profile picture' });
+  }
+});
+
 // 2. User Login
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
