@@ -94,6 +94,46 @@ export default function ViewAlbum() {
     }
   }, []);
 
+  const handleShare = async () => {
+  Alert.prompt(
+    'Share Album',
+    'Enter the username of the user you want to share this album with:',
+    async (input) => {
+      if (!input) {
+        Alert.alert('Error', 'Please enter a valid email or username.');
+        return;
+      }
+
+      try {
+        const token = await AsyncStorage.getItem('token');
+        if (!token) {
+          console.error('No token found');
+          return;
+        }
+
+        const response = await fetch(`http://localhost:3000/albums/${_id}/share`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ sharedWith: input }),
+        });
+
+        if (response.ok) {
+          Alert.alert('Success', `Album shared successfully with ${input}`);
+        } else {
+          console.error('Failed to share album');
+          Alert.alert('Error', 'Failed to share album. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error sharing album:', error);
+        Alert.alert('Error', 'An error occurred while sharing the album.');
+      }
+    }
+  );
+};
+
   const handleBack = () => {
     navi2.navigate('(tabs)' as never);
   };
@@ -220,10 +260,10 @@ export default function ViewAlbum() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Text style={styles.buttonText}>Back</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate('Albums/EditAlbum', route.params)} style={styles.editButton}>
+        <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
           <Text style={styles.buttonText}>Edit</Text>
         </TouchableOpacity>
       </View>
@@ -240,10 +280,15 @@ export default function ViewAlbum() {
         numColumns={2}
         contentContainerStyle={styles.imageList}
       />
+<View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 20 }}>
+<TouchableOpacity onPress={handleShare} style={styles.shareButton}>
+  <Text style={styles.buttonText}>Share</Text>
+</TouchableOpacity>
 
-      <TouchableOpacity onPress={() => Alert.alert('Delete Album', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Delete', onPress: () => console.log('Album deleted') }])} style={styles.dltButton}>
+      <TouchableOpacity onPress={() => Alert.alert('Delete Album', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Delete', onPress: handleDelete }])} style={styles.dltButton}>
         <Text style={styles.buttonText}>Delete</Text>
       </TouchableOpacity>
+      </View>
 
       {/* Fullscreen Image Viewer Modal */}
       <Modal visible={isModalVisible} transparent={true} onRequestClose={() => setModalVisible(false)}>
@@ -295,7 +340,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3B30',
     padding: 15,
     borderRadius: 10,
-    margin: 30,
+    margin: 20,
     marginTop: 10,
     bottom: 50,
     alignItems: 'center',
@@ -381,5 +426,15 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: '#fff',
     fontSize: 16,
+  },
+  shareButton: {
+    backgroundColor: '#4CAF50',
+    padding: 15,
+    borderRadius: 10,
+    margin: 20,
+    marginTop: 10,
+    bottom: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

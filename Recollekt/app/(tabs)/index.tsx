@@ -12,42 +12,60 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, '(tabs)/inde
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const [albums, setAlbums] = useState([]);
+  const [sharedAlbums, setSharedAlbums] = useState([]);// State to hold shared albums
 
   // Fetch albums from the backend
-  const fetchAlbums = async () => {
-    try {
-      const token = await AsyncStorage.getItem('token');
-      if (!token) {
-        Alert.alert('Error', 'Authentication token is missing. Please log in again.');
-        return;
-      }
-
-      const response = await fetch('http://localhost:3000/albums', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAlbums(data.albums); // Assuming the backend returns an array of albums
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.error || 'Failed to fetch albums');
-      }
-    } catch (error) {
-      console.error('Error fetching albums:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
-    }
-  };
-
-  // Fetch albums when the screen is focused
   useFocusEffect(
     React.useCallback(() => {
       const fetchData = async () => {
-        await fetchAlbums();
+        try {
+          // Fetch shared albums
+          const token = await AsyncStorage.getItem('token');
+          if (!token) {
+            console.error('No token found');
+            return;
+          }
+  
+          const sharedResponse = await fetch(`http://localhost:3000/albums/shared`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+  
+          if (sharedResponse.ok) {
+            const sharedAlbumsData = await sharedResponse.json();
+            console.log("Raw Shared Albums Response:", sharedAlbumsData); // Extract the shared albums array
+            setSharedAlbums(sharedAlbumsData.sharedAlbums);
+          } else {
+            console.error('Failed to fetch shared albums');
+            setSharedAlbums([]); // Set to empty array if fetch fails
+          }
+          console.log("SHARED ALBUMS", sharedAlbums);
+  
+          // Fetch user albums
+          const albumsResponse = await fetch(`http://localhost:3000/albums`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+  
+          if (albumsResponse.ok) {
+            const albumsData = await albumsResponse.json(); // Extract the albums array
+            setAlbums(albumsData.albums);
+            console.log("ALBUMS", albums);
+          } else {
+            console.error('Failed to fetch albums');
+            setAlbums([]); // Set to empty array if fetch fails
+          }
+ // Combine albums and shared albums
+        } catch (error) {
+          console.error('Error fetching data:', error);
+        }
+        
       };
+  
       fetchData();
     }, [])
   );
@@ -77,7 +95,7 @@ export default function HomeScreen() {
         Your Albums
       </Text>
       <FlatList
-        data={albums}
+        data={[...(albums || []), ...(sharedAlbums || [])]} // Use the combined albums array
         keyExtractor={(item) => item._id} // Assuming each album has a unique `_id`
         renderItem={renderAlbum}
         numColumns={2}

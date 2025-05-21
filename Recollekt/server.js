@@ -183,6 +183,81 @@ app.put('/edit-album', async (req, res) => {
   }
 });
 
+app.post('/albums/:id/share', async (req, res) => {
+  const { id } = req.params;
+  const { sharedWith } = req.body;
+  const token = req.headers.authorization?.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    // Validate the album ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid album ID' });
+    }
+
+    // Find the album to share
+    const album = await Album.findById(id);
+    if (!album) {
+      console.error('Album not found:', id);
+      return res.status(404).json({ error: 'Album not found' });
+    }
+    console.log('Album found:', album);
+
+    // Find the user to share the album with
+    const sharedUser = await User.findOne({ $or: [{ email: sharedWith }, { username: sharedWith }] });
+    if (!sharedUser) {
+      console.error('User to share with not found:', sharedWith);
+      return res.status(404).json({ error: 'User to share with not found' });
+    }
+    console.log('User to share with found:', sharedUser);
+
+    // Add the album to the shared user's sharedAlbums array
+    if (!sharedUser.sharedAlbums.includes(id)) {
+      sharedUser.sharedAlbums.push(id);
+      await sharedUser.save();
+      console.log('Album added to sharedAlbums:', sharedUser.sharedAlbums);
+    } else {
+      console.log('Album already shared with this user');
+    }
+
+    res.status(200).json({ message: `Album shared successfully with ${sharedWith}` });
+  } catch (error) {
+    console.error('Error sharing album:', error);
+    res.status(500).json({ error: 'Failed to share album' });
+  }
+});
+app.get('/albums/shared', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    // Find the user and populate the sharedAlbums field
+    const user = await User.findById(userId).populate('sharedAlbums');
+    if (!user) {
+      console.error('User not found:', userId);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log('Shared albums:', user.sharedAlbums); // Debugging log
+    res.status(200).json({ sharedAlbums: user.sharedAlbums });
+  } catch (error) {
+    console.error('Error fetching shared albums:', error);
+    res.status(500).json({ error: 'Failed to fetch shared albums' });
+  }
+});
+
 app.delete('/albums/:id', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1]; // Extract the token from the Authorization header
   if (!token) {
@@ -334,6 +409,8 @@ app.post('/signup', async (req, res) => {
     res.status(500).json({ error: 'Failed to register user' });
   }
 });
+
+
 
 app.put('/user/profile-picture', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
