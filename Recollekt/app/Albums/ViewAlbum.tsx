@@ -21,6 +21,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ImageModal from 'react-native-image-modal';
 import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import * as Permissions from 'expo-permissions';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
 type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
@@ -57,6 +59,23 @@ export default function ViewAlbum() {
   const handleImagePress = (index: number) => {
     setCurrentImageIndex(index);
     setModalVisible(true);
+  };
+
+  const saveImageToCameraRoll = async (uri: string) => {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Camera roll permission is required to save images.');
+        return;
+      }
+  
+      const asset = await MediaLibrary.createAssetAsync(uri);
+      await MediaLibrary.createAlbumAsync('Saved Photos', asset, false);
+      Alert.alert('Success', 'Image saved to camera roll!');
+    } catch (error) {
+      console.error('Error saving image:', error);
+      Alert.alert('Error', 'Failed to save image.');
+    }
   };
 
 
@@ -315,6 +334,12 @@ export default function ViewAlbum() {
               );
             }}
           />
+          <TouchableOpacity
+            onPress={() => saveImageToCameraRoll(images[currentImageIndex].url)}
+            style={styles.saveButton}
+          >
+            <Text style={styles.closeButtonText}>Save</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
             <Text style={styles.closeButtonText}>Close</Text>
           </TouchableOpacity>
@@ -419,6 +444,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 10,
+    borderRadius: 5,
+  },
+  saveButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     padding: 10,
     borderRadius: 5,
