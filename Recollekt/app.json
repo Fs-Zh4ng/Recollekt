@@ -38,5 +38,10 @@
     "experiments": {
       "typedRoutes": true
     }
+  },
+  "ios": {
+  "infoPlist": {
+    "NSPhotoLibraryAddUsageDescription": "Allow this app to save photos to your library."
   }
+} 
 }
