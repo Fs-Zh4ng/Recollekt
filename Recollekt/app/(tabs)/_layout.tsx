@@ -51,7 +51,7 @@ export default function TabLayout() {
         name="Movie"
         options={{
           title: 'Movie',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="oven.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="film.fill" color={color} />,
         }}
       />
     </Tabs>

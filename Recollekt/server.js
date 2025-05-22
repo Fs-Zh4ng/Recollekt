@@ -9,11 +9,20 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const fs = require('fs');
 const ExifParser = require('exif-parser');
+const path = require('path');
+const ffmpeg = require('fluent-ffmpeg');
+
+// Set FFmpeg and FFprobe paths
+ffmpeg.setFfmpegPath('/opt/homebrew/bin/ffmpeg'); // Update this path as needed
+ffmpeg.setFfprobePath('/opt/homebrew/bin/ffprobe'); // Update this path as needed
 
 
 const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+const PORT = 3000;
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/recollekt', {
@@ -69,6 +78,127 @@ app.get('/friends/pending', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch pending requests' });
   }
 });
+
+app.post('/generate-video', async (req, res) => {
+  try {
+    const { albums } = req.body;
+
+    if (!albums || albums.length === 0) {
+      return res.status(400).json({ error: 'No albums provided' });
+    }
+
+    // Flatten all image URLs from the albums
+    const imageUrls = albums.flatMap((album) => album.images);
+    console.log('Image URLs:', imageUrls); // Debugging log
+
+    if (imageUrls.length === 0) {
+      return res.status(400).json({ error: 'No images found in albums' });
+    }
+
+    // Create a temporary directory for downloaded images
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir);
+    }
+
+    // Download images to the temp directory
+    const downloadedImages = [];
+    for (let i = 0; i < albums.length; i++) {
+      const album = albums[i];
+    
+      // Add the cover image
+      if (album.coverImage) {
+        const coverImagePath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
+        await downloadImage(album.coverImage, coverImagePath);
+        downloadedImages.push(coverImagePath);
+      }
+    
+      // Add album images
+      for (let j = 0; j < album.images.length; j++) {
+        const imageUrl = album.images[j];
+        const imagePath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
+        await downloadImage(imageUrl, imagePath);
+        downloadedImages.push(imagePath);
+      }
+    }
+
+    // Generate video from images
+    const outputVideoPath = path.join(__dirname, 'output', `video_${Date.now()}.mp4`);
+    if (!fs.existsSync(path.dirname(outputVideoPath))) {
+      fs.mkdirSync(path.dirname(outputVideoPath));
+    }
+
+    await createVideoFromImages(downloadedImages, outputVideoPath);
+
+    // Clean up temporary images
+    downloadedImages.forEach((filePath) => {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      } else {
+        console.warn(`File not found during cleanup: ${filePath}`);
+      }
+    });
+
+    // Respond with the video URL
+    const videoUrl = `http://localhost:${PORT}/videos/${path.basename(outputVideoPath)}`;
+    res.json({ videoUrl });
+  } catch (error) {
+    console.error('Error generating video:', error);
+    res.status(500).json({ error: 'Failed to generate video' });
+  }
+});
+
+
+// Helper function to download an image
+const downloadImage = (url, dest) => {
+  return new Promise((resolve, reject) => {
+    if (url.startsWith('file://')) {
+      // Handle local file paths
+      const localPath = url.replace('file://', ''); // Remove the "file://" prefix
+      fs.copyFile(localPath, dest, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    } else if (url.startsWith('http://') || url.startsWith('https://')) {
+      // Handle remote URLs
+      const https = require('https');
+      const file = fs.createWriteStream(dest);
+      https
+        .get(url, (response) => {
+          response.pipe(file);
+          file.on('finish', () => {
+            file.close(resolve);
+          });
+        })
+        .on('error', (err) => {
+          fs.unlink(dest, () => reject(err));
+        });
+    } else {
+      reject(new Error(`Unsupported URL protocol: ${url}`));
+    }
+  });
+};
+const createVideoFromImages = (images, outputPath) => {
+  return new Promise((resolve, reject) => {
+    const command = ffmpeg();
+
+    // Use a frame pattern if images are named sequentially
+    command.input(path.join(path.dirname(images[0]), 'image_%d.jpg'))
+      .inputOptions('-framerate 1'); // Display each image for 1 second
+
+    command
+      .on('end', () => resolve())
+      .on('error', (err) => reject(err))
+      .outputOptions([
+        '-c:v libx264', // Use H.264 codec
+        '-r 30',        // Set frame rate to 30 FPS
+        '-pix_fmt yuv420p', // Set pixel format
+      ])
+      .save(outputPath);
+  });
+};
+// Serve generated videos
+app.use('/videos', express.static(path.join(__dirname, 'output')));
 
 app.post('/friends/request', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];

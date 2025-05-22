@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Keyboard, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import RNPickerSelect from 'react-native-picker-select';
 import { Picker } from '@react-native-picker/picker';
+import Video from 'react-native-video';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system';
 
 // Define album type once
 type Album = {
@@ -17,6 +19,9 @@ const Movie = () => {
   const [sharedAlbums, setSharedAlbums] = useState<Album[]>([]);
   const [selectedAlbums, setSelectedAlbums] = useState<Album[]>([]);
   const [selectedAlbum, setSelectedAlbum] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,6 +70,9 @@ const Movie = () => {
     const allAlbums = [...albums, ...sharedAlbums];
     const albumToAdd = allAlbums.find((album) => album._id === albumId);
 
+    console.log('Album to Add:', albumToAdd);
+    console.log("Albums and shared albums", allAlbums);
+
     if (!albumToAdd) {
       Alert.alert('No Album Selected', 'Please select an album to add.');
       return;
@@ -76,18 +84,84 @@ const Movie = () => {
     }
 
     setSelectedAlbums((prev) => [...prev, albumToAdd]);
+    console.log('Selected Albums:', selectedAlbums);
   };
-
-  const createVideo = () => {
+  const createVideo = async () => {
     if (selectedAlbums.length === 0) {
       Alert.alert('No Albums Selected', 'Please select at least one album to create a video.');
       return;
     }
 
-    Alert.alert('Video Creation', 'Video creation process started!');
-    console.log('Selected Albums:', selectedAlbums);
+    try {
+      setIsLoading(true);
 
-    // Future logic: generate video using a library like react-native-ffmpeg
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        Alert.alert('Error', 'Authentication token missing.');
+        return;
+      }
+
+      const payload = selectedAlbums.map((album) => ({
+        title: album.title,
+        coverImage: album.coverImage,
+        images: album.images.map((img) => img.url),
+      }));
+
+      const response = await fetch('http://localhost:3000/generate-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ albums: payload }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        Alert.alert('Video Error', errorData.error || 'Failed to create video.');
+        return;
+      }
+
+      const data = await response.json();
+      if (data.videoUrl) {
+        setVideoUrl(data.videoUrl); // Set the video URL to display it
+      } else {
+        Alert.alert('Error', 'Unexpected response from server.');
+      }
+    } catch (error) {
+      console.error('Error creating video:', error);
+      Alert.alert('Error', 'Failed to create video.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveToPhotoAlbum = async () => {
+    if (!videoUrl) return;
+
+    try {
+      setIsSaving(true);
+
+      // Request media library permissions
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'You need to grant permission to save the video.');
+        return;
+      }
+
+      // Download the video to a local file
+      const localUri = `${FileSystem.documentDirectory}temp_video.mp4`;
+      const response = await FileSystem.downloadAsync(videoUrl, localUri);
+
+      // Save the video to the photo album
+      await MediaLibrary.saveToLibraryAsync(response.uri);
+      Alert.alert('Success', 'Video saved to your photo album!');
+    } catch (error) {
+      console.error('Error saving video:', error);
+      Alert.alert('Error', 'Failed to save video.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
