@@ -1,15 +1,50 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserContext, UserContextType } from '../UserContext';
 import { jwtDecode } from 'jwt-decode';
 import { useNavigation } from 'expo-router';
+import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import Zeroconf from 'react-native-zeroconf';
+
+
+interface ZeroconfService {
+  host: string;
+  port: number;
+  [key: string]: any; // Include additional properties if needed
+}
 
 
 
 
 export default function CreateAlbum() {
+  const [serverIP, setServerIP] = useState<string | null>(null);
+  const zeroconf = new Zeroconf();
+
+zeroconf.on('resolved', (service: ZeroconfService) => {
+  console.log('Resolved service:', service);
+  const { host, port } = service;
+  const serverIP = `${host}:${port}`;
+  console.log('Backend server IP:', serverIP);
+  setServerIP(serverIP); // Save the detected IP for API calls
+});
+
+
+zeroconf.scan('http', 'tcp', 'local');
+  useEffect(() => {
+    const fetchIPAddress = async () => {
+      const ip = await getLocalIPAddress();
+      if (ip) {
+        setServerIP(ip);
+      } else {
+        Alert.alert('Error', 'Unable to detect local IP address.');
+      }
+    };
+
+    fetchIPAddress();
+  }, []);
+
   const [albumName, setAlbumName] = useState('');
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [albumImages, setAlbumImages] = useState<string[]>([]);
@@ -58,7 +93,7 @@ export default function CreateAlbum() {
       const decodedToken = jwtDecode<{ id: string }>(token);
       const creatorId = decodedToken.id;
   
-      const response = await fetch('http://localhost:3000/albums', {
+      const response = await fetch(`http://recollekt.local:3000/albums`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

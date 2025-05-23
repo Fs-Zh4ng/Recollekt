@@ -1,13 +1,22 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../_layout';
 import { useNavigation } from '@react-navigation/native';
 import { UserContext } from '../UserContext'; // Adjust the path to your UserContext file
+import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import Zeroconf from 'react-native-zeroconf';
+
+interface ZeroconfService {
+  host: string;
+  port: number;
+  [key: string]: any; // Include additional properties if needed
+}
 
 export default function LoginScreen() {
   const navigation = useNavigation();
-  ``
+  const [serverIP, setServerIP] = useState<string | null>(null);
+
   const { setIsAuthenticated } = useContext(AuthContext);
   const userContext = useContext(UserContext); // Adjust the path to your UserContext file
   if (!userContext) {
@@ -19,6 +28,31 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [logorSign, setLogorSign] = useState(0);
   const [confirmPassword, setConfirmPassword] = useState('');
+  const zeroconf = new Zeroconf();
+
+zeroconf.on('resolved', (service: ZeroconfService) => {
+  console.log('Resolved service:', service);
+  const { host, port } = service;
+  const serverIP = `${host}:${port}`;
+  console.log('Backend server IP:', serverIP);
+  setServerIP(serverIP); // Save the detected IP for API calls
+});
+
+
+
+zeroconf.scan('http', 'tcp', 'local');
+  useEffect(() => {
+    const fetchIPAddress = async () => {
+      const ip = await getLocalIPAddress();
+      if (ip) {
+        setServerIP(ip);
+      } else {
+        Alert.alert('Error', 'Unable to detect local IP address.');
+      }
+    };
+
+    fetchIPAddress();
+  }, []);
 
   const handleSignUp = async () => {
     if (!username || !password || !confirmPassword) {
@@ -32,7 +66,7 @@ export default function LoginScreen() {
     setLoading(true);
     console.log('Sign Up:', { username, password });
     try { 
-      const response = await fetch('http://127.0.0.1:3000/signup', {
+      const response = await fetch(`http://recollekt.local:3000/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,7 +102,7 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3000/login', {
+      const response = await fetch(`http://recollekt.local:3000/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

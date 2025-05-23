@@ -1,12 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Keyboard, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Keyboard,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
-import Video from 'react-native-video';
+import {Video, ResizeMode} from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
+import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import Zeroconf from 'react-native-zeroconf';
 
-// Define album type once
+// Define album type
 type Album = {
   _id: string;
   title: string;
@@ -14,7 +25,39 @@ type Album = {
   images: { url: string; timestamp: string }[];
 };
 
+interface ZeroconfService {
+  host: string;
+  port: number;
+  [key: string]: any; // Include additional properties if needed
+}
+
+
 const Movie = () => {
+  const [serverIP, setServerIP] = useState<string | null>(null);
+  const zeroconf = new Zeroconf();
+
+zeroconf.on('resolved', (service: ZeroconfService) => {
+  console.log('Resolved service:', service);
+  const { host, port } = service;
+  const serverIP = `${host}:${port}`;
+  console.log('Backend server IP:', serverIP);
+  setServerIP(serverIP); // Save the detected IP for API calls
+});
+
+zeroconf.scan('http', 'tcp', 'local');
+  useEffect(() => {
+    const fetchIPAddress = async () => {
+      const ip = await getLocalIPAddress();
+      if (ip) {
+        setServerIP(ip);
+      } else {
+        Alert.alert('Error', 'Unable to detect local IP address.');
+      }
+    };
+
+    fetchIPAddress();
+  }, []);
+
   const [albums, setAlbums] = useState<Album[]>([]);
   const [sharedAlbums, setSharedAlbums] = useState<Album[]>([]);
   const [selectedAlbums, setSelectedAlbums] = useState<Album[]>([]);
@@ -33,11 +76,11 @@ const Movie = () => {
         }
 
         const [sharedResponse, albumsResponse] = await Promise.all([
-          fetch(`http://localhost:3000/albums/shared`, {
+          fetch(`http://recollekt.local:3000/albums/shared`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch(`http://localhost:3000/albums`, {
+          fetch(`http://recollekt.local:3000/albums`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
           }),
@@ -70,9 +113,6 @@ const Movie = () => {
     const allAlbums = [...albums, ...sharedAlbums];
     const albumToAdd = allAlbums.find((album) => album._id === albumId);
 
-    console.log('Album to Add:', albumToAdd);
-    console.log("Albums and shared albums", allAlbums);
-
     if (!albumToAdd) {
       Alert.alert('No Album Selected', 'Please select an album to add.');
       return;
@@ -84,8 +124,8 @@ const Movie = () => {
     }
 
     setSelectedAlbums((prev) => [...prev, albumToAdd]);
-    console.log('Selected Albums:', selectedAlbums);
   };
+
   const createVideo = async () => {
     if (selectedAlbums.length === 0) {
       Alert.alert('No Albums Selected', 'Please select at least one album to create a video.');
@@ -94,7 +134,6 @@ const Movie = () => {
 
     try {
       setIsLoading(true);
-
       const token = await AsyncStorage.getItem('token');
       if (!token) {
         Alert.alert('Error', 'Authentication token missing.');
@@ -107,7 +146,7 @@ const Movie = () => {
         images: album.images.map((img) => img.url),
       }));
 
-      const response = await fetch('http://localhost:3000/generate-video', {
+      const response = await fetch(`http://recollekt.local:3000/generate-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +163,7 @@ const Movie = () => {
 
       const data = await response.json();
       if (data.videoUrl) {
-        setVideoUrl(data.videoUrl); // Set the video URL to display it
+        setVideoUrl(data.videoUrl);
       } else {
         Alert.alert('Error', 'Unexpected response from server.');
       }
@@ -135,26 +174,40 @@ const Movie = () => {
       setIsLoading(false);
     }
   };
-
   const saveToPhotoAlbum = async () => {
     if (!videoUrl) return;
-
+    console.log('Downloading video from:', videoUrl);
+  
     try {
       setIsSaving(true);
-
+  
       // Request media library permissions
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'You need to grant permission to save the video.');
         return;
       }
-
-      // Download the video to a local file
-      const localUri = `${FileSystem.documentDirectory}temp_video.mp4`;
-      const response = await FileSystem.downloadAsync(videoUrl, localUri);
-
-      // Save the video to the photo album
-      await MediaLibrary.saveToLibraryAsync(response.uri);
+  
+      // Download the video to a temporary path in the cache directory
+      const tempUri = `${FileSystem.cacheDirectory}temp_video.mp4`;
+      console.log('Downloading video to temporary path:', tempUri);
+      const response = await FileSystem.downloadAsync(videoUrl, tempUri);
+  
+      // Move the file to the document directory
+      const permanentUri = `${FileSystem.documentDirectory}video.mp4`;
+      console.log('Moving video to document directory:', permanentUri);
+      await FileSystem.moveAsync({
+        from: response.uri,
+        to: permanentUri,
+      });
+  
+      // Create an asset for the video
+      console.log('Creating asset for the video...');
+      const asset = await MediaLibrary.createAssetAsync(permanentUri);
+  
+      // Save the asset to the photo library
+      console.log('Saving asset to photo album...');
+      await MediaLibrary.saveToLibraryAsync(asset.uri);
       Alert.alert('Success', 'Video saved to your photo album!');
     } catch (error) {
       console.error('Error saving video:', error);
@@ -166,65 +219,89 @@ const Movie = () => {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-    <View style={styles.container}>
-        <View style={styles.card}>
-      <Text style={styles.header}>Select Albums to Create a Video</Text>
+      <View style={styles.container}>
+        {videoUrl ? (
+          <View style={styles.fullscreenVideoContainer}>
+            <Video
+              source={{ uri: videoUrl }}
+              style={styles.fullscreenVideo}
+              useNativeControls
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay
+            />
+            {isSaving ? (
+              <ActivityIndicator size="large" color="#fff" />
+            ) : (
+              <TouchableOpacity style={styles.saveButton} onPress={saveToPhotoAlbum}>
+                <Text style={styles.saveButtonText}>Save to Camera Roll</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.backButton} onPress={() => setVideoUrl(null)}>
+              <Text style={styles.backButtonText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View>
+            <View style={styles.card}>
+              <Text style={styles.header}>Select Albums to Create a Video</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={selectedAlbum}
+                  onValueChange={(itemValue) => setSelectedAlbum(itemValue)}
+                  style={styles.picker}
+                  dropdownIconColor="#000"
+                >
+                  <Picker.Item label="Select an album..." value={null} />
+                  {albums.map((album) => (
+                    <Picker.Item
+                      key={album._id}
+                      label={`My Album: ${album.title}`}
+                      value={album._id}
+                      color="#000"
+                    />
+                  ))}
+                  {sharedAlbums.map((album) => (
+                    <Picker.Item
+                      key={album._id}
+                      label={`Shared Album: ${album.title}`}
+                      value={album._id}
+                      color="#000"
+                    />
+                  ))}
+                </Picker>
+              </View>
 
-      {/* Album Picker */}
-      <View style={styles.pickerContainer}>
-      <Picker
-        selectedValue={selectedAlbum}
-        onValueChange={(itemValue) => setSelectedAlbum(itemValue)}
-        style={styles.picker}
-        dropdownIconColor="#000"
-      >
-        <Picker.Item label="Select an album..." value={null} />
-        {albums.map((album) => (
-          <Picker.Item
-            key={album._id}
-            label={`My Album: ${album.title}`}
-            value={album._id}
-            color="#000"
-          />
-        ))}
-        {sharedAlbums.map((album) => (
-          <Picker.Item
-            key={album._id}
-            label={`Shared Album: ${album.title}`}
-            value={album._id}
-            color="#000"
-          />
-        ))}
-      </Picker>
-    </View>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => {
+                  if (selectedAlbum) {
+                    addAlbumToVideo(selectedAlbum);
+                  } else {
+                    Alert.alert('No Album Selected', 'Please select an album to add.');
+                  }
+                }}
+              >
+                <Text style={styles.addButtonText}>Add Album</Text>
+              </TouchableOpacity>
+            </View>
 
-      {/* Add Album Button */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => {
-          if (selectedAlbum) {
-            addAlbumToVideo(selectedAlbum);
-          } else {
-            Alert.alert('No Album Selected', 'Please select an album to add.');
-          }
-        }}
-      >
-        <Text style={styles.addButtonText}>Add Album</Text>
-      </TouchableOpacity>
+            <Text style={styles.sectionHeader}>Selected Albums:</Text>
+            {selectedAlbums.map((album) => (
+              <Text key={album._id} style={styles.albumText}>
+                {album.title}
+              </Text>
+            ))}
+
+            <TouchableOpacity style={styles.createButton} onPress={createVideo}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.createButtonText}>Create Video</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
-
-      {/* Selected Albums List */}
-      <Text style={styles.sectionHeader}>Selected Albums:</Text>
-      {selectedAlbums.map((album) => (
-        <Text key={album._id} style={styles.albumText}>{album.title}</Text>
-      ))}
-
-      {/* Create Video Button */}
-      <TouchableOpacity style={styles.createButton} onPress={createVideo}>
-        <Text style={styles.createButtonText}>Create Video</Text>
-      </TouchableOpacity>
- 
-    </View>
     </TouchableWithoutFeedback>
   );
 };
@@ -252,26 +329,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginTop: 50,
   },
-  
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  
   card: {
     marginTop: 20,
     paddingHorizontal: 20,
   },
-  
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
-  
   pickerContainer: {
     height: 50,
     justifyContent: 'center',
@@ -284,8 +345,6 @@ const styles = StyleSheet.create({
     width: '100%',
     color: '#000',
   },
-  
-  
   addButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 12,
@@ -293,25 +352,11 @@ const styles = StyleSheet.create({
     marginTop: 80,
     alignItems: 'center',
   },
-  
   addButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  
-  subTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  
-  selectedAlbum: {
-    fontSize: 14,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  
   createButton: {
     backgroundColor: '#34C759',
     paddingVertical: 14,
@@ -319,37 +364,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 30,
   },
-  
   createButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-});
-
-const pickerSelectStyles = {
-  inputIOS: {
-    fontSize: 18,
+  fullscreenVideoContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 30,
+  },
+  fullscreenVideo: {
+    width: '100%',
+    height: '70%',
+    backgroundColor: 'black',
+  },
+  saveButton: {
+    backgroundColor: '#007AFF',
     paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#ccc',
+    paddingHorizontal: 24,
     borderRadius: 8,
-    color: 'black',
-    backgroundColor: '#fff',
-    marginBottom: 10,
+    marginTop: 20,
   },
-  inputAndroid: {
-    fontSize: 18,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    color: 'black',
-    backgroundColor: '#fff',
-    marginBottom: 10,
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
-};
+  backButton: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#888',
+    borderRadius: 6,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+});
 
 export default Movie;

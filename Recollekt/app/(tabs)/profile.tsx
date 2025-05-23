@@ -5,8 +5,18 @@ import { AuthContext } from '../_layout'; // Adjust the path to your UserContext
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import Zeroconf from 'react-native-zeroconf';
+
+interface ZeroconfService {
+  host: string;
+  port: number;
+  [key: string]: any; // Include additional properties if needed
+}
 
 export default function ProfileScreen() {
+  const [serverIP, setServerIP] = useState<string | null>(null);
+
   const { user, setUser } = useContext(UserContext) as UserContextType;
   const { setIsAuthenticated } = useContext(AuthContext);
   const navigation = useNavigation();
@@ -16,6 +26,31 @@ export default function ProfileScreen() {
 
 
   const [profileImage, setProfileImage] = useState(user.profileImage);
+  const zeroconf = new Zeroconf();
+
+zeroconf.on('resolved', (service: ZeroconfService) => {
+  console.log('Resolved service:', service);
+  const { host, port } = service;
+  const serverIP = `${host}:${port}`;
+  console.log('Backend server IP:', serverIP);
+  setServerIP(serverIP); // Save the detected IP for API calls
+});
+
+
+
+zeroconf.scan('http', 'tcp', 'local');
+  useEffect(() => {
+    const fetchIPAddress = async () => {
+      const ip = await getLocalIPAddress();
+      if (ip) {
+        setServerIP(ip);
+      } else {
+        Alert.alert('Error', 'Unable to detect local IP address.');
+      }
+    };
+
+    fetchIPAddress();
+  }, []);
 
   const handleChangeProfilePicture = async () => {
     try {
@@ -45,7 +80,7 @@ export default function ProfileScreen() {
           return;
         }
 
-        const response = await fetch('http://localhost:3000/user/profile-picture', {
+        const response = await fetch(`http://recollekt.local:3000/user/profile-picture`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -91,7 +126,7 @@ export default function ProfileScreen() {
     const fetchPendingRequests = async () => {
       try {
         const token = await AsyncStorage.getItem('token');
-        const response = await fetch('http://localhost:3000/friends/pending', {
+        const response = await fetch(`http://recollekt.local:3000/friends/pending`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,

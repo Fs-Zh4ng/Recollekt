@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+    "NSPhotoLibraryAddUsageDescription": "We need access to your photo library to save videos."
+  }
+
     },
     "android": {
       "adaptiveIcon": {
@@ -33,15 +37,16 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
     }
   },
   "ios": {
-  "infoPlist": {
-    "NSPhotoLibraryAddUsageDescription": "Allow this app to save photos to your library."
+    "infoPlist": {
+      "NSPhotoLibraryAddUsageDescription": "Allow this app to save photos to your library."
+    }
   }
-} 
 }

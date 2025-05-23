@@ -11,6 +11,9 @@ const fs = require('fs');
 const ExifParser = require('exif-parser');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
+const os = require('os');
+const bonjour = require('bonjour')();
+
 
 // Set FFmpeg and FFprobe paths
 ffmpeg.setFfmpegPath('/opt/homebrew/bin/ffmpeg'); // Update this path as needed
@@ -21,8 +24,31 @@ const app = express();
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+const getLocalIPAddress = () => {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address; // Return the first non-internal IPv4 address
+      }
+    }
+  }
+  return 'localhost'; // Fallback to localhost if no IP is found
+};
+
+bonjour.publish({
+  name: 'Recollekt Backend',
+  type: 'http',
+  port: 3000,
+  host: getLocalIPAddress(), // Use the dynamic IP detection function
+});
 
 const PORT = 3000;
+
+
+console.log('Bonjour service published for Recollekt Backend');
+
+
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/recollekt', {
@@ -598,6 +624,7 @@ app.post('/login', async (req, res) => {
 });
 
 // Start the server
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
+const HOSTNAME = 'recollekt.local'; // Replace with your desired hostname
+app.listen(PORT, HOSTNAME, () => {
+  console.log(`Server is running on http://${HOSTNAME}:${PORT}`);
 });

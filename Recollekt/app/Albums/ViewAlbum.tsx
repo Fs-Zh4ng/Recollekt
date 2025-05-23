@@ -23,11 +23,46 @@ import ImageModal from 'react-native-image-modal';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as Permissions from 'expo-permissions';
+import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import Zeroconf from 'react-native-zeroconf';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
 type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
 
+interface ZeroconfService {
+  host: string;
+  port: number;
+  [key: string]: any; // Include additional properties if needed
+}
+
 export default function ViewAlbum() {
+  const [serverIP, setServerIP] = useState<string | null>(null);
+  const zeroconf = new Zeroconf();
+
+zeroconf.on('resolved', (service: ZeroconfService) => {
+  console.log('Resolved service:', service);
+  const { host, port } = service;
+  const serverIP = `${host}:${port}`;
+  console.log('Backend server IP:', serverIP);
+  setServerIP(serverIP); // Save the detected IP for API calls
+});
+
+
+
+zeroconf.scan('http', 'tcp', 'local');
+  useEffect(() => {
+    const fetchIPAddress = async () => {
+      const ip = await getLocalIPAddress();
+      if (ip) {
+        setServerIP(ip);
+      } else {
+        Alert.alert('Error', 'Unable to detect local IP address.');
+      }
+    };
+
+    fetchIPAddress();
+  }, []);
+
   const route = useRoute<ViewAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
   const navi2 = useNavigation();
@@ -130,7 +165,7 @@ export default function ViewAlbum() {
           return;
         }
 
-        const response = await fetch(`http://localhost:3000/albums/${_id}/share`, {
+        const response = await fetch(`http://recollekt.local:3000/albums/${_id}/share`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -169,7 +204,7 @@ export default function ViewAlbum() {
         return;
       }
 
-      const response = await fetch(`http://localhost:3000/albums/${_id}`, {
+      const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -204,7 +239,7 @@ export default function ViewAlbum() {
             return;
           }
 
-          const response = await fetch(`http://localhost:3000/albums/${_id}`, {
+          const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
             method: 'GET',
             headers: {
               Authorization: `Bearer ${token}`,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Image, FlatList, StyleSheet, TouchableOpacity, Alert, Button } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -6,11 +6,47 @@ import { RootStackParamList } from '../(tabs)/types'; // Adjust the path as nece
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
+import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import Zeroconf from 'react-native-zeroconf';
+
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/EditAlbum'>;
 type EditAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/EditAlbum'>;
 
+interface ZeroconfService {
+  host: string;
+  port: number;
+  [key: string]: any; // Include additional properties if needed
+}
+
 export default function EditAlbum() {
+  const [serverIP, setServerIP] = useState<string | null>(null);
+  const zeroconf = new Zeroconf();
+
+zeroconf.on('resolved', (service: ZeroconfService) => {
+  console.log('Resolved service:', service);
+  const { host, port } = service;
+  const serverIP = `${host}:${port}`;
+  console.log('Backend server IP:', serverIP);
+  setServerIP(serverIP); // Save the detected IP for API calls
+});
+
+
+
+zeroconf.scan('http', 'tcp', 'local');
+  useEffect(() => {
+    const fetchIPAddress = async () => {
+      const ip = await getLocalIPAddress();
+      if (ip) {
+        setServerIP(ip);
+      } else {
+        Alert.alert('Error', 'Unable to detect local IP address.');
+      }
+    };
+
+    fetchIPAddress();
+  }, []);
+
   const route = useRoute<EditAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
@@ -71,7 +107,7 @@ export default function EditAlbum() {
         const decodedToken = jwtDecode<{ id: string }>(token);
         const creatorId = decodedToken.id;
   
-      const response = await fetch('http://localhost:3000/edit-album', {
+      const response = await fetch(`http://recollekt.local:3000/edit-album`, {
         method: 'PUT', // Use PUT for updating resources
         headers: {
           'Content-Type': 'application/json',
