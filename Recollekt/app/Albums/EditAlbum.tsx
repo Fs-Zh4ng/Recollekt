@@ -7,56 +7,34 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
-import Zeroconf from 'react-native-zeroconf';
+
 
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/EditAlbum'>;
 type EditAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/EditAlbum'>;
 
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
+
 
 export default function EditAlbum() {
   const [serverIP, setServerIP] = useState<string | null>(null);
-  const zeroconf = new Zeroconf();
 
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
 
   const route = useRoute<EditAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
 
   const [title, setTitle] = useState(initialTitle);
-  const [coverImage, setCoverImage] = useState(initialCoverImage);
+  const [coverImage, setCoverImage] = useState<{ data: Buffer<ArrayBufferLike>; contentType: string }>(initialCoverImage);
   const [images, setImages] = useState<{ url: string; timestamp: string }[]>(
-      (initialImages || []).map((image) =>
-        typeof image === 'string' ? { url: image, timestamp: '' } : image
-      )
+      (initialImages || []).map((image) => {
+        if (typeof image === 'string') {
+          return { url: image, timestamp: '' };
+        } else if ('data' in image && 'contentType' in image && 'timestamp' in image) {
+          return { url: '', timestamp: image.timestamp.toString() };
+        } else {
+          return image;
+        }
+      })
     );
   const handlePickCoverImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -66,7 +44,10 @@ zeroconf.scan('http', 'tcp', 'local');
     });
 
     if (!result.canceled) {
-      setCoverImage(result.assets[0].uri);
+      setCoverImage({
+        data: Buffer.from(result.assets[0].uri, 'base64'),
+        contentType: 'image/jpeg', // Adjust the content type as needed
+      });
     }
   };
 
@@ -105,7 +86,32 @@ zeroconf.scan('http', 'tcp', 'local');
     
         // Decode the token to get the user ID
         const decodedToken = jwtDecode<{ id: string }>(token);
-        const creatorId = decodedToken.id;
+              const creatorId = decodedToken.id;
+          
+              const formData = new FormData();
+              formData.append('title', title);
+              formData.append('creatorId', creatorId);
+          
+              // Attach cover image
+              const coverImageName = 'cover_image.jpg'; // Replace with a default or dynamically generated name
+              const coverImageType = `image/${coverImageName?.split('.').pop()}`;
+              formData.append('coverImage', {
+                uri: coverImage,
+                name: coverImageName,
+                type: coverImageType,
+              } as any);
+          
+              // Attach album images
+              for (let i = 0; i < images.length; i++) {
+                const imageUri = images[i];
+                const imageName = imageUri.url.split('/').pop();
+                const imageType = `image/${imageName?.split('.').pop()}`;
+                formData.append('images', {
+                  uri: imageUri,
+                  name: imageName,
+                  type: imageType,
+                } as any);
+              }
   
       const response = await fetch(`http://recollekt.local:3000/edit-album`, {
         method: 'PUT', // Use PUT for updating resources
@@ -113,12 +119,7 @@ zeroconf.scan('http', 'tcp', 'local');
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`, // Include the token for authentication
         },
-        body: JSON.stringify({
-          id: route.params._id, // Pass the album ID to identify the album
-          title,
-          coverImage,
-          images,
-        }),
+        body: formData,
       });
   
       if (response.ok) {
@@ -127,7 +128,11 @@ zeroconf.scan('http', 'tcp', 'local');
             _id: route.params._id,
             title,
             coverImage,
-            images,
+            images: images.map(image => ({
+              data: Buffer.from(image.url, 'base64'),
+              contentType: 'image/jpeg', // Adjust content type as needed
+              timestamp: { type: new Date(image.timestamp), required: true },
+            })),
           }); // Navigate back to the previous screen
       } else {
         const errorData = await response.json();
@@ -171,7 +176,7 @@ zeroconf.scan('http', 'tcp', 'local');
       <Text style={styles.label}>Cover Image</Text>
       <TouchableOpacity onPress={handlePickCoverImage}>
         {coverImage ? (
-          <Image source={{ uri: coverImage }} style={styles.coverImage} />
+          <Image source={{ uri: `data:${coverImage.contentType};base64,${coverImage.data.toString('base64')}` }} style={styles.coverImage} />
         ) : (
           <View style={styles.coverPlaceholder}>
             <Text style={styles.coverPlaceholderText}>Pick a Cover Image</Text>

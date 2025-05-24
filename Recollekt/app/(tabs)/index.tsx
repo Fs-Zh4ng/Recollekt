@@ -6,44 +6,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, '(tabs)/index'>;
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
-import Zeroconf from 'react-native-zeroconf';
+import { fromByteArray } from 'base64-js';
 
-
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
 
 export default function HomeScreen() {
-  const [serverIP, setServerIP] = useState<string | null>(null);
-  const zeroconf = new Zeroconf();
-
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
-
   const navigation = useNavigation<NavigationProp>();
   const [albums, setAlbums] = useState([]);
   const [sharedAlbums, setSharedAlbums] = useState([]);// State to hold shared albums
@@ -104,8 +70,26 @@ zeroconf.scan('http', 'tcp', 'local');
     }, [])
   );
 
-  const handleViewAlbum = (album: { _id: string; title: string; coverImage: string; images: {url: string; timestamp: string}[] }) => {
-    navigation.navigate('Albums/ViewAlbum', album); // Pass album details as params
+  const handleViewAlbum = (album: { _id: string; title: string; coverImage: { 
+    data: Buffer,
+    contentType: string
+   }; images: {
+    data: Buffer,
+    contentType: String, // Image URL
+    timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
+  }[] }) => {
+    navigation.navigate('Albums/ViewAlbum', {
+      ...album,
+      coverImage: {
+        data: Buffer.from(album.coverImage.data), // Ensure data is a Buffer
+        contentType: album.coverImage.contentType,
+      }, // Convert coverImage to an object with data and contentType
+      images: album.images.map(image => ({
+        data: Buffer.from(image.data), // Ensure data is a Buffer
+        contentType: image.contentType as string, // Ensure contentType is treated as a primitive string
+        timestamp: { type: new Date(image.timestamp.type), required: true }, // Match the expected timestamp structure
+      })),
+    }); // Pass album details as params
   };
 
   const handleCreate = () => {
@@ -114,14 +98,28 @@ zeroconf.scan('http', 'tcp', 'local');
   };
 
   
-  const renderAlbum = ({ item }: { item: any }) => (
-    <TouchableOpacity onPress={() => handleViewAlbum(item)}>
-      <View style={styles.albumContainer}>
-        <Image source={{ uri: item.coverImage }} style={styles.albumCover} />
-        <Text style={styles.albumTitle}>{item.title}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderAlbum = ({ item }: { item: any }) => {
+    let imageSource;
+    console.log(item.coverImage);
+    if (typeof item.coverImage === 'string') {
+      imageSource = item.coverImage.startsWith('data:image')
+        ? { uri: item.coverImage }
+        : { uri: `http://recollekt.local:3000/${item.coverImage}` };
+    } else if (item.coverImage?.data && item.coverImage?.contentType) {
+      const base64Image = `data:${item.coverImage.contentType};base64,${fromByteArray(item.coverImage.data)}`;
+      console.log("BASE64 IMAGE", base64Image);
+      imageSource = { uri: base64Image };
+    }
+    console.log("IMAGE SOURCE", imageSource);
+    return (
+      <TouchableOpacity onPress={() => handleViewAlbum(item)}>
+        <View style={styles.albumContainer}>
+          <Image source={imageSource} style={styles.albumCover} />
+          <Text style={styles.albumTitle}>{item.title}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <ThemedView style={styles.container}>

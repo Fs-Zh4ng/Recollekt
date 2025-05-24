@@ -11,16 +11,17 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-    "NSPhotoLibraryAddUsageDescription": "We need access to your photo library to save videos."
-  }
-
+        "NSPhotoLibraryAddUsageDescription": "We need access to your photo library to save videos."
+      },
+      "bundleIdentifier": "com.recollekt.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.recollekt.app"
     },
     "web": {
       "bundler": "metro",

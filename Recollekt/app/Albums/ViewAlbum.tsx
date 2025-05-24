@@ -24,44 +24,15 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import * as Permissions from 'expo-permissions';
 import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
-import Zeroconf from 'react-native-zeroconf';
+
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
 type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
 
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
+
 
 export default function ViewAlbum() {
   const [serverIP, setServerIP] = useState<string | null>(null);
-  const zeroconf = new Zeroconf();
-
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
 
   const route = useRoute<ViewAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
@@ -74,18 +45,27 @@ zeroconf.scan('http', 'tcp', 'local');
   const [images, setImages] = useState<
     { url: string; base64Uri: string | null; timestamp: string }[]
   >(
-    (initialImages || []).map((image: string | { url: string; timestamp: string }) =>
-      typeof image === 'string'
-        ? {
-            url: image,
-            base64Uri: image.startsWith('file://') ? null : image,
-            timestamp: '',
-          }
-        : {
-            ...image,
-            base64Uri: image.url.startsWith('file://') ? null : image.url,
-          }
-    )
+    (initialImages || []).map((image: string | { url: string; timestamp: string } | { data: Buffer; contentType: string; timestamp: { type: Date; required: true } }) => {
+      if (typeof image === 'string') {
+        return {
+          url: image,
+          base64Uri: image.startsWith('file://') ? null : image,
+          timestamp: '',
+        };
+      } else if ('url' in image) {
+        return {
+          ...image,
+          base64Uri: image.url.startsWith('file://') ? null : image.url,
+        };
+      } else if ('data' in image && 'contentType' in image && 'timestamp' in image) {
+        return {
+          url: `data:${image.contentType};base64,${Buffer.from(image.data).toString('base64')}`,
+          base64Uri: null,
+          timestamp: image.timestamp.type.toString(),
+        };
+      }
+      return null;
+    }).filter(Boolean) as { url: string; base64Uri: string | null; timestamp: string }[]
   );
 
   const [isModalVisible, setModalVisible] = useState(false);
@@ -251,19 +231,28 @@ zeroconf.scan('http', 'tcp', 'local');
             setTitle(updatedAlbum.title);
             setCoverImage(updatedAlbum.coverImage);
             setImages(
-              updatedAlbum.images.map(
-                (image: string | { url: string; timestamp: string }) =>
-                  typeof image === 'string'
-                    ? {
-                        url: image,
-                        base64Uri: image.startsWith('file://') ? null : image,
-                        timestamp: '',
-                      }
-                    : {
-                        ...image,
-                        base64Uri: image.url.startsWith('file://') ? null : image.url,
-                      }
-              )
+              updatedAlbum.images.map((image: any) => {
+                if (typeof image === 'string') {
+                  return {
+                    url: image,
+                    base64Uri: image.startsWith('file://') ? null : image,
+                    timestamp: '',
+                  };
+                } else if (image.url) {
+                  return {
+                    url: image.url,
+                    base64Uri: image.url.startsWith('file://') ? null : image.url,
+                    timestamp: image.timestamp || '',
+                  };
+                } else if (image.data && image.timestamp) {
+                  return {
+                    url: `data:${image.contentType};base64,${Buffer.from(image.data).toString('base64')}`,
+                    base64Uri: null,
+                    timestamp: image.timestamp.type.toString(),
+                  };
+                }
+                return null;
+              }).filter(Boolean) as { url: string; base64Uri: string | null; timestamp: string }[]
             );
           } else {
             console.error('Failed to fetch updated album');
@@ -277,18 +266,21 @@ zeroconf.scan('http', 'tcp', 'local');
     }, [_id])
   );
 
-  const renderImage = ({ item, index }: { item: { url: string; base64Uri: string | null; timestamp: string }; index: number }) => (
-    <TouchableOpacity onPress={() => handleImagePress(index)} style={styles.imageContainer}>
-      <Image
-        resizeMode="cover"
-        style={styles.albumImage}
-        source={{ uri: item.url }}
-      />
-      <Text style={styles.timestampText}>
-        Taken on: {new Date(item.timestamp).toLocaleString()}
-      </Text>
+  const renderImage = ({ item, index }: { item: { data: Buffer; contentType: string; timestamp: { type: Date; required: true } }; index: number }) => {
+    const imageUrl = `data:${item.contentType};base64,${Buffer.from(item.data).toString('base64')}`;
+    return (
+      <TouchableOpacity onPress={() => handleImagePress(index)} style={styles.imageContainer}>
+        <Image
+          resizeMode="cover"
+          style={styles.albumImage}
+          source={{ uri: imageUrl }}
+        />
+        <Text style={styles.timestampText}>
+          Taken on: {item.timestamp.type instanceof Date ? item.timestamp.type.toLocaleString() : new Date(item.timestamp.type).toLocaleString()}
+       </Text>
     </TouchableOpacity>
   );
+};
   
   useEffect(() => {
     const checkImages = async () => {
@@ -323,12 +315,19 @@ zeroconf.scan('http', 'tcp', 'local');
       </View>
 
       <View style={styles.albumHeader}>
-        <Image source={{ uri: coverImage }} style={styles.coverImage} />
+        <Image
+          source={{ uri: typeof coverImage === 'string' ? coverImage : '' }}
+          style={styles.coverImage}
+        />
         <Text style={styles.title}>{title}</Text>
       </View>
 
       <FlatList
-        data={images}
+        data={images.map(image => ({
+          data: Buffer.from(image.url.split(',')[1], 'base64'),
+          contentType: image.url.split(';')[0].split(':')[1],
+          timestamp: { type: new Date(image.timestamp), required: true as true },
+        }))}
         keyExtractor={(item, index) => index.toString()}
         renderItem={renderImage}
         numColumns={2}

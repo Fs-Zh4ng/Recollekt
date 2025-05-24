@@ -13,7 +13,11 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const os = require('os');
 const bonjour = require('bonjour')();
-
+const multer = require('multer');
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+const { Buffer } = require('buffer');
+const exif = require('exif-parser');
 
 // Set FFmpeg and FFprobe paths
 ffmpeg.setFfmpegPath('/opt/homebrew/bin/ffmpeg'); // Update this path as needed
@@ -21,6 +25,7 @@ ffmpeg.setFfprobePath('/opt/homebrew/bin/ffprobe'); // Update this path as neede
 
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -40,7 +45,7 @@ bonjour.publish({
   name: 'Recollekt Backend',
   type: 'http',
   port: 3000,
-  host: getLocalIPAddress(), // Use the dynamic IP detection function
+  host: 'recollekt.local', // Use the dynamic IP detection function
 });
 
 const PORT = 3000;
@@ -166,7 +171,7 @@ app.post('/generate-video', async (req, res) => {
     });
 
     // Respond with the video URL
-    const videoUrl = `http://localhost:${PORT}/videos/${path.basename(outputVideoPath)}`;
+    const videoUrl = `http://recollekt.local:${PORT}/videos/${path.basename(outputVideoPath)}`;
     res.json({ videoUrl });
   } catch (error) {
     console.error('Error generating video:', error);
@@ -314,19 +319,29 @@ app.post('/friends/approve', async (req, res) => {
 
 
 app.put('/edit-album', async (req, res) => {
-  const { id, title, coverImage, images } = req.body;
-
-  const updatedImages = images.map((image) => ({
-    url: image.url || image, // Handle cases where only the URL is provided
-    timestamp: image.timestamp || new Date(), // Add a timestamp if not provided
-  }));
+  const { id, title } = req.body;
 
   try {
-    const album = await Album.findByIdAndUpdate(
-      id,
-      { title, coverImage, images: updatedImages },
-      { new: true }
-    );
+    const updateData = {};
+
+    if (title) updateData.title = title;
+
+    if (req.files['coverImage']?.[0]) {
+      const file = req.files['coverImage'][0];
+      updateData.coverImage = {
+        data: file.buffer,
+        contentType: file.mimetype
+      };
+    }
+
+    if (req.files['images']) {
+      updateData.images = req.files['images'].map(file => ({
+        data: file.buffer,
+        contentType: file.mimetype
+      }));
+    }
+
+    const album = await Album.findByIdAndUpdate(id, updateData, { new: true });
 
     if (!album) {
       return res.status(404).json({ error: 'Album not found' });
@@ -494,37 +509,51 @@ app.get('/albums', async (req, res) => {
   }
 });
 
-app.post('/albums', async (req, res) => {
-  const { title, coverImage, images, creatorId } = req.body;
-  console.log('Received album creation request:', req.body);
+ // Use multer's memory storage
 
-  // Validate the request body
-  if (!title || !coverImage || !creatorId) {
-    return res.status(400).json({ error: 'Title, cover image, and creator ID are required' });
-  }
 
+ app.post('/albums', upload.fields([{ name: 'coverImage' }, { name: 'images' }]), async (req, res) => {
   try {
-    // Add a timestamp to each image
-    const imagesWithTimestamps = (images || []).map((image) => {
-      const filePath = (typeof image === 'string' ? image : image.url).replace('file://', ''); // Handle string or object
-      const exifTimestamp = extractExifTimestamp(filePath); // Extract EXIF metadata
+    const { title, creatorId } = req.body;
+    const coverImage = req.files['coverImage']?.[0];
+    const images = req.files['images'] || [];
+
+    const coverImageData = coverImage
+      ? { data: coverImage.buffer, contentType: coverImage.mimetype }
+      : null;
+
+    const albumImages = images.map((file) => {
+      const parser = exif.create(file.buffer);
+      let exifData = {};
+      try {
+        exifData = parser.parse();
+      } catch (err) {
+        console.warn('Failed to parse EXIF data:', err);
+      }
+
+      let timestamp = exifData.tags.DateTimeOriginal || exifData.tags.CreateDate;
+      if (timestamp && typeof timestamp === 'number') {
+        timestamp = new Date(timestamp * 1000); // convert EXIF timestamp to JS Date
+      } else {
+        timestamp = new Date(); // fallback if no EXIF timestamp found
+      }
+
       return {
-        url: typeof image === 'string' ? image : image.url, // Use the string directly if it's not an object
-        timestamp: exifTimestamp || new Date(), // Use EXIF timestamp or fallback to current date
+        data: file.buffer,
+        contentType: file.mimetype,
+        timestamp: timestamp,
       };
     });
 
-    // Create a new album in the database
     const album = new Album({
       title,
-      coverImage,
-      images: imagesWithTimestamps,
       creatorId,
+      coverImage: coverImageData,
+      images: albumImages,
     });
+    await album.save();
 
-    await album.save(); // Save the album to the database
-
-    res.status(201).json({ message: 'Album created successfully', album });
+    res.status(201).json({ message: 'Album created successfully' });
   } catch (error) {
     console.error('Error creating album:', error);
     res.status(500).json({ error: 'Failed to create album' });

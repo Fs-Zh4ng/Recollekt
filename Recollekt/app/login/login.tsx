@@ -7,11 +7,6 @@ import { UserContext } from '../UserContext'; // Adjust the path to your UserCon
 import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
 import Zeroconf from 'react-native-zeroconf';
 
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -28,31 +23,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [logorSign, setLogorSign] = useState(0);
   const [confirmPassword, setConfirmPassword] = useState('');
-  const zeroconf = new Zeroconf();
 
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
 
   const handleSignUp = async () => {
     if (!username || !password || !confirmPassword) {

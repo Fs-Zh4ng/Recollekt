@@ -8,11 +8,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
 import Zeroconf from 'react-native-zeroconf';
 
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
 
 export default function ProfileScreen() {
   const [serverIP, setServerIP] = useState<string | null>(null);
@@ -26,31 +21,7 @@ export default function ProfileScreen() {
 
 
   const [profileImage, setProfileImage] = useState(user.profileImage);
-  const zeroconf = new Zeroconf();
 
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
 
   const handleChangeProfilePicture = async () => {
     try {
@@ -155,7 +126,7 @@ zeroconf.scan('http', 'tcp', 'local');
 
     try {
       const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/friends/request', {
+      const response = await fetch('http://recollekt.local:3000/friends/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +150,7 @@ zeroconf.scan('http', 'tcp', 'local');
   const handleApproveRequest = async (username: string) => {
     try {
       const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/friends/approve', {
+      const response = await fetch('http://recollekt.local:3000/friends/approve', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

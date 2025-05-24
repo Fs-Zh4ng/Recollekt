@@ -8,56 +8,23 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
-import {Video, ResizeMode} from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
-import Zeroconf from 'react-native-zeroconf';
 
 // Define album type
 type Album = {
   _id: string;
   title: string;
-  coverImage: string;
+  coverImage: string; // base64 or path
   images: { url: string; timestamp: string }[];
 };
 
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
-
-
 const Movie = () => {
-  const [serverIP, setServerIP] = useState<string | null>(null);
-  const zeroconf = new Zeroconf();
-
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
-
   const [albums, setAlbums] = useState<Album[]>([]);
   const [sharedAlbums, setSharedAlbums] = useState<Album[]>([]);
   const [selectedAlbums, setSelectedAlbums] = useState<Album[]>([]);
@@ -65,6 +32,8 @@ zeroconf.scan('http', 'tcp', 'local');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const SERVER_BASE_URL = 'http://recollekt.local:3000';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,11 +45,11 @@ zeroconf.scan('http', 'tcp', 'local');
         }
 
         const [sharedResponse, albumsResponse] = await Promise.all([
-          fetch(`http://recollekt.local:3000/albums/shared`, {
+          fetch(`recollekt.local/albums/shared`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch(`http://recollekt.local:3000/albums`, {
+          fetch(`recollekt.local/albums`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
           }),
@@ -91,7 +60,6 @@ zeroconf.scan('http', 'tcp', 'local');
           setSharedAlbums(sharedAlbumsData.sharedAlbums);
         } else {
           console.error('Failed to fetch shared albums');
-          setSharedAlbums([]);
         }
 
         if (albumsResponse.ok) {
@@ -99,7 +67,6 @@ zeroconf.scan('http', 'tcp', 'local');
           setAlbums(albumsData.albums);
         } else {
           console.error('Failed to fetch albums');
-          setAlbums([]);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -142,11 +109,15 @@ zeroconf.scan('http', 'tcp', 'local');
 
       const payload = selectedAlbums.map((album) => ({
         title: album.title,
-        coverImage: album.coverImage,
-        images: album.images.map((img) => img.url),
+        coverImage: album.coverImage.startsWith('data:image')
+          ? null
+          : album.coverImage,
+        images: album.images.map((img) =>
+          img.url.startsWith('data:image') ? null : img.url
+        ).filter(Boolean), // filter out nulls
       }));
 
-      const response = await fetch(`http://recollekt.local:3000/generate-video`, {
+      const response = await fetch(`recollekt.local/generate-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -164,6 +135,7 @@ zeroconf.scan('http', 'tcp', 'local');
       const data = await response.json();
       if (data.videoUrl) {
         setVideoUrl(data.videoUrl);
+        console.log('Video URL:', data.videoUrl);
       } else {
         Alert.alert('Error', 'Unexpected response from server.');
       }
@@ -174,39 +146,24 @@ zeroconf.scan('http', 'tcp', 'local');
       setIsLoading(false);
     }
   };
+
   const saveToPhotoAlbum = async () => {
     if (!videoUrl) return;
-    console.log('Downloading video from:', videoUrl);
-  
     try {
       setIsSaving(true);
-  
-      // Request media library permissions
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'You need to grant permission to save the video.');
         return;
       }
-  
-      // Download the video to a temporary path in the cache directory
+
       const tempUri = `${FileSystem.cacheDirectory}temp_video.mp4`;
-      console.log('Downloading video to temporary path:', tempUri);
       const response = await FileSystem.downloadAsync(videoUrl, tempUri);
-  
-      // Move the file to the document directory
+
       const permanentUri = `${FileSystem.documentDirectory}video.mp4`;
-      console.log('Moving video to document directory:', permanentUri);
-      await FileSystem.moveAsync({
-        from: response.uri,
-        to: permanentUri,
-      });
-  
-      // Create an asset for the video
-      console.log('Creating asset for the video...');
+      await FileSystem.moveAsync({ from: response.uri, to: permanentUri });
+
       const asset = await MediaLibrary.createAssetAsync(permanentUri);
-  
-      // Save the asset to the photo library
-      console.log('Saving asset to photo album...');
       await MediaLibrary.saveToLibraryAsync(asset.uri);
       Alert.alert('Success', 'Video saved to your photo album!');
     } catch (error) {
@@ -215,6 +172,10 @@ zeroconf.scan('http', 'tcp', 'local');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const getImageSource = (img: string) => {
+    return img.startsWith('data:image') ? img : `recollekt.local/${img}`;
   };
 
   return (
@@ -227,7 +188,7 @@ zeroconf.scan('http', 'tcp', 'local');
               style={styles.fullscreenVideo}
               useNativeControls
               resizeMode={ResizeMode.CONTAIN}
-              shouldPlay
+              isLooping
             />
             {isSaving ? (
               <ActivityIndicator size="large" color="#fff" />
@@ -253,20 +214,10 @@ zeroconf.scan('http', 'tcp', 'local');
                 >
                   <Picker.Item label="Select an album..." value={null} />
                   {albums.map((album) => (
-                    <Picker.Item
-                      key={album._id}
-                      label={`My Album: ${album.title}`}
-                      value={album._id}
-                      color="#000"
-                    />
+                    <Picker.Item key={album._id} label={`My Album: ${album.title}`} value={album._id} />
                   ))}
                   {sharedAlbums.map((album) => (
-                    <Picker.Item
-                      key={album._id}
-                      label={`Shared Album: ${album.title}`}
-                      value={album._id}
-                      color="#000"
-                    />
+                    <Picker.Item key={album._id} label={`Shared Album: ${album.title}`} value={album._id} />
                   ))}
                 </Picker>
               </View>
@@ -287,9 +238,13 @@ zeroconf.scan('http', 'tcp', 'local');
 
             <Text style={styles.sectionHeader}>Selected Albums:</Text>
             {selectedAlbums.map((album) => (
-              <Text key={album._id} style={styles.albumText}>
-                {album.title}
-              </Text>
+              <View key={album._id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Image
+                  source={{ uri: getImageSource(album.coverImage) }}
+                  style={{ width: 50, height: 50, marginRight: 10, borderRadius: 6 }}
+                />
+                <Text style={styles.albumText}>{album.title}</Text>
+              </View>
             ))}
 
             <TouchableOpacity style={styles.createButton} onPress={createVideo}>
@@ -307,32 +262,11 @@ zeroconf.scan('http', 'tcp', 'local');
 };
 
 const styles = StyleSheet.create({
-  header: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  sectionHeader: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  albumText: {
-    fontSize: 16,
-    marginVertical: 4,
-  },
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
-    marginTop: 50,
-  },
-  card: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-  },
+  header: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
+  sectionHeader: { fontSize: 18, fontWeight: 'bold', marginTop: 16, marginBottom: 8 },
+  albumText: { fontSize: 16 },
+  container: { flex: 1, padding: 20, backgroundColor: '#fff', marginTop: 50 },
+  card: { marginTop: 20, paddingHorizontal: 20 },
   pickerContainer: {
     height: 50,
     justifyContent: 'center',
@@ -340,11 +274,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginBottom: 12,
   },
-  picker: {
-    height: 50,
-    width: '100%',
-    color: '#000',
-  },
+  picker: { height: 50, width: '100%', color: '#000' },
   addButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 12,
@@ -352,11 +282,7 @@ const styles = StyleSheet.create({
     marginTop: 80,
     alignItems: 'center',
   },
-  addButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  addButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   createButton: {
     backgroundColor: '#34C759',
     paddingVertical: 14,
@@ -364,11 +290,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 30,
   },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  createButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   fullscreenVideoContainer: {
     flex: 1,
     backgroundColor: '#000',
@@ -376,11 +298,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 30,
   },
-  fullscreenVideo: {
-    width: '100%',
-    height: '70%',
-    backgroundColor: 'black',
-  },
+  fullscreenVideo: { width: '100%', height: '70%', backgroundColor: 'black' },
   saveButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 12,
@@ -388,21 +306,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 20,
   },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  backButton: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: '#888',
-    borderRadius: 6,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 14,
-  },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  backButton: { marginTop: 10, padding: 10, backgroundColor: '#888', borderRadius: 6 },
+  backButtonText: { color: '#fff', fontSize: 14 },
 });
 
 export default Movie;

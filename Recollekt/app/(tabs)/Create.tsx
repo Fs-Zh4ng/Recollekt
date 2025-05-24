@@ -6,48 +6,23 @@ import { UserContext, UserContextType } from '../UserContext';
 import { jwtDecode } from 'jwt-decode';
 import { useNavigation } from 'expo-router';
 import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
-import Zeroconf from 'react-native-zeroconf';
+import * as MediaLibrary from 'expo-media-library';
 
 
-interface ZeroconfService {
-  host: string;
-  port: number;
-  [key: string]: any; // Include additional properties if needed
-}
+
 
 
 
 
 export default function CreateAlbum() {
   const [serverIP, setServerIP] = useState<string | null>(null);
-  const zeroconf = new Zeroconf();
 
-zeroconf.on('resolved', (service: ZeroconfService) => {
-  console.log('Resolved service:', service);
-  const { host, port } = service;
-  const serverIP = `${host}:${port}`;
-  console.log('Backend server IP:', serverIP);
-  setServerIP(serverIP); // Save the detected IP for API calls
-});
-
-
-zeroconf.scan('http', 'tcp', 'local');
-  useEffect(() => {
-    const fetchIPAddress = async () => {
-      const ip = await getLocalIPAddress();
-      if (ip) {
-        setServerIP(ip);
-      } else {
-        Alert.alert('Error', 'Unable to detect local IP address.');
-      }
-    };
-
-    fetchIPAddress();
-  }, []);
 
   const [albumName, setAlbumName] = useState('');
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [albumImages, setAlbumImages] = useState<string[]>([]);
+  const [imageTimestamps, setImageTimestamps] = useState<string[]>([]);
+
     const { user } = useContext(UserContext) as UserContextType;
   const navigation = useNavigation();
 
@@ -63,16 +38,43 @@ zeroconf.scan('http', 'tcp', 'local');
     }
   };
 
+
   const handleAddImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      quality: 1,
+      exif: true,
     });
 
     if (!result.canceled) {
-      const selectedImages = result.assets.map((asset) => asset.uri);
-      setAlbumImages((prevImages) => [...prevImages, ...selectedImages]);
+      const newImageUris: string[] = [];
+      const newTimestamps: string[] = [];
+
+      for (const asset of result.assets) {
+        newImageUris.push(asset.uri);
+
+        let timestamp = new Date().toISOString(); // Default
+
+        try {
+          const createdAsset = await MediaLibrary.createAssetAsync(asset.uri);
+          const assetInfo = await MediaLibrary.getAssetInfoAsync(createdAsset.id);
+          const exifData = assetInfo.exif as { [key: string]: any };
+          console.log('EXIF Data:', exifData);
+
+          if (exifData && exifData.DateTimeOriginal) {
+            // Clean and convert timestamp
+            const cleanedDate = exifData.DateTimeOriginal.replace(/:/g, '-');
+            timestamp = new Date(cleanedDate).toISOString();
+          }
+        } catch (error) {
+          console.warn('Failed to retrieve EXIF data:', error);
+        }
+
+        newTimestamps.push(timestamp);
+      }
+
+      setAlbumImages((prev) => [...prev, ...newImageUris]);
+      setImageTimestamps((prev) => [...prev, ...newTimestamps]);
     }
   };
 
@@ -81,49 +83,70 @@ zeroconf.scan('http', 'tcp', 'local');
       Alert.alert('Error', 'Please enter an album name and select a cover image');
       return;
     }
-  
+
     try {
       const token = await AsyncStorage.getItem('token');
       if (!token) {
         Alert.alert('Error', 'Authentication token is missing. Please log in again.');
         return;
       }
-  
-      // Decode the token to get the user ID
+
       const decodedToken = jwtDecode<{ id: string }>(token);
       const creatorId = decodedToken.id;
-  
+
+      const formData = new FormData();
+      formData.append('title', albumName);
+      formData.append('creatorId', creatorId);
+
+      const coverImageName = coverImage.split('/').pop();
+      const coverImageType = `image/${coverImageName?.split('.').pop()}`;
+      formData.append('coverImage', {
+        uri: coverImage,
+        name: coverImageName,
+        type: coverImageType,
+      } as any);
+
+      for (let i = 0; i < albumImages.length; i++) {
+        const imageUri = albumImages[i];
+        const imageName = imageUri.split('/').pop();
+        const imageType = `image/${imageName?.split('.').pop()}`;
+
+        formData.append('images', {
+          uri: imageUri,
+          name: imageName,
+          type: imageType,
+        } as any);
+
+        formData.append('imageTimestamps[]', imageTimestamps[i]);
+        console.log('Image Timestamp:', imageTimestamps[i]);
+      }
+
       const response = await fetch(`http://recollekt.local:3000/albums`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          title: albumName,
-          coverImage,
-          images: albumImages,
-          creatorId, // Use the extracted user ID
-        }),
+        body: formData,
       });
-  
+
       const text = await response.text();
       console.log('Server Response:', text);
-  
-      if (!response.headers.get('content-type')?.includes('application/json')) {
-        Alert.alert('Error', 'Unexpected server response. Please try again later.');
-        return;
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (err) {
+        console.error('Error parsing JSON:', err);
+        data = { error: text };
       }
-  
-      const data = JSON.parse(text);
-  
+
       if (response.ok) {
         Alert.alert('Success', 'Album created successfully!');
-        console.log('Album created:', data.album);
         setAlbumName('');
         setCoverImage(null);
         setAlbumImages([]);
-        navigation.navigate('index' as never); // Navigate back to the home screen
+        setImageTimestamps([]);
+        navigation.navigate('index' as never);
       } else {
         Alert.alert('Error', data.error || 'Failed to create album');
       }
