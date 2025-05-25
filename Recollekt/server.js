@@ -559,6 +559,53 @@ app.get('/albums', async (req, res) => {
   }
 });
 
+app.get('/albums/:id', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    // Validate the album ID
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid album ID' });
+    }
+
+    const album = await Album.findOne({ _id: req.params.id, creatorId: userId });
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found' });
+    }
+
+    // Fetch cover image and images from S3
+    album.coverImage = await getBase64FromS3(process.env.AWS_S3_BUCKET_NAME, extractKeyFromUrl(album.coverImage));
+    console.log(album);
+
+    res.status(200).json({ album });
+  } catch (error) {
+    console.error('Error fetching album:', error);
+    res.status(500).json({ error: 'Failed to fetch album' });
+  }
+});
+
+app.get('/images', async (req, res) => {
+  try {
+    const image1 = req.query.url;
+    console.log('Received image URL:', image1);
+    const key = extractKeyFromUrl(image1);
+    console.log('Extracted key:', key); // Debugging log
+    const base64Image = await getBase64FromS3(process.env.AWS_S3_BUCKET_NAME, key);
+    console.log('Base64 image:', base64Image.substring(0, 20)); // Debugging log
+    res.status(200).json({ image: base64Image });
+  } catch (error) {
+    console.error('Error fetching image:', error);
+    res.status(500).json({ error: 'Failed to fetch image' }); 
+  }// Debugging log
+
+});
+
  // Use multer's memory storage
 
 // 1. User Registration

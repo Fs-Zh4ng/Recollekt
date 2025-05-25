@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserContext, UserContextType } from '../UserContext';
@@ -28,6 +28,7 @@ export default function CreateAlbum() {
   const [coverImage, setCoverImage] = useState('');
   const [albumImages, setAlbumImages] = useState<{uri: string; timestamp: Date}[]>([]);
   const [imageTimestamps, setImageTimestamps] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
     const { user } = useContext(UserContext) as UserContextType;
   const navigation = useNavigation();
@@ -70,6 +71,7 @@ export default function CreateAlbum() {
     }
   };
   const handleCreateAlbum = async () => {
+
     if (!albumName || !coverImage || albumImages.length === 0) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -98,7 +100,7 @@ export default function CreateAlbum() {
   //   console.log(key, value);
   // }); // Log the form data for debugging
 
-
+  setLoading(true);
     try {
       const response = await fetch(`http://recollekt.local:3000/albums`, {
         method: 'POST',
@@ -119,14 +121,17 @@ export default function CreateAlbum() {
         setCoverImage('');
         setAlbumImages([]);
         setImageTimestamps([]);
+        setLoading(false);
         navigation.navigate('index' as never);
       } else {
         console.error('Failed to create album:', await response.json());
         Alert.alert('Error', 'Failed to create album');
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error creating album:', error);
       Alert.alert('Error', 'An error occurred while creating the album');
+      setLoading(false);
     }
   };
   return (
@@ -165,9 +170,13 @@ export default function CreateAlbum() {
       ))}
     </View>
 
-    <TouchableOpacity onPress={handleCreateAlbum} style={styles.editButton}>
-      <Text style={styles.buttonText}>Create</Text>
-    </TouchableOpacity>
+    <TouchableOpacity onPress={handleCreateAlbum} style={styles.editButton} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Text style={styles.buttonText}>Create</Text>
+          )}
+        </TouchableOpacity>
   </ScrollView>
 </KeyboardAvoidingView>
   );

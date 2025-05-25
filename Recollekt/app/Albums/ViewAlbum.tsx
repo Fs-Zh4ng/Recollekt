@@ -32,40 +32,21 @@ type ViewAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/ViewAlbum'>;
 
 
 export default function ViewAlbum() {
-  const [serverIP, setServerIP] = useState<string | null>(null);
 
   const route = useRoute<ViewAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
   const navi2 = useNavigation();
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
+  console.log('Initial Images:', initialImages);
 
   const [title, setTitle] = useState(initialTitle);
   const [coverImage, setCoverImage] = useState(initialCoverImage);
 
-  const [images, setImages] = useState<
-    { url: string; base64Uri: string | null; timestamp: string }[]
-  >(
-    (initialImages || []).map((image: string | { url: string; timestamp: string } | { data: Buffer; contentType: string; timestamp: { type: Date; required: true } }) => {
-      if (typeof image === 'string') {
-        return {
-          url: image,
-          base64Uri: image.startsWith('file://') ? null : image,
-          timestamp: '',
-        };
-      } else if ('url' in image) {
-        return {
-          ...image,
-          base64Uri: image.url.startsWith('file://') ? null : image.url,
-        };
-      } else if ('data' in image && 'contentType' in image && 'timestamp' in image) {
-        return {
-          url: `data:${image.contentType};base64,${Buffer.from(image.data).toString('base64')}`,
-          base64Uri: null,
-          timestamp: image.timestamp.type.toString(),
-        };
-      }
-      return null;
-    }).filter(Boolean) as { url: string; base64Uri: string | null; timestamp: string }[]
+  const [images, setImages] = useState<{ uri: string; timestamp: { type: string; required: true }; }[]>(
+    initialImages.map(image => ({
+      ...image,
+      timestamp: { ...image.timestamp, required: true },
+    }))
   );
 
   const [isModalVisible, setModalVisible] = useState(false);
@@ -94,39 +75,6 @@ export default function ViewAlbum() {
   };
 
 
-  const convertToBase64 = async (uri: string) => {
-    try {
-      const fileInfo = await FileSystem.getInfoAsync(uri);
-      if (!fileInfo.exists) {
-        console.warn('File does not exist:', uri);
-        return null;
-      }
-  
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-  
-      return `data:image/jpeg;base64,${base64}`;
-    } catch (error) {
-      console.error('Failed to convert image:', uri, error);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    const fetchBase64Images = async () => {
-      const updatedImages = await Promise.all(
-        images.map(async (image) => {
-          if (!image.base64Uri && image.url?.startsWith('file://')) {
-            const base64Uri = await convertToBase64(image.url);
-            return { ...image, base64Uri };
-          }
-          return image;
-        })
-      );
-      setImages(updatedImages.filter((image) => image.url !== null) as { url: string; base64Uri: string | null; timestamp: string }[]);
-    }
-  }, []);
 
   const handleShare = async () => {
   Alert.prompt(
@@ -226,36 +174,32 @@ export default function ViewAlbum() {
             },
           });
 
+          console.log('Response:', response); // Log the response for debugging
+
           if (response.ok) {
-            const updatedAlbum = await response.json();
+            const data = await response.json(); // Log the data for debugging
+            const updatedAlbum = data.album; // Log the updated album for debugging
             setTitle(updatedAlbum.title);
-            setCoverImage(updatedAlbum.coverImage);
-            setImages(
-              updatedAlbum.images.map((image: any) => {
-                if (typeof image === 'string') {
-                  return {
-                    url: image,
-                    base64Uri: image.startsWith('file://') ? null : image,
-                    timestamp: '',
-                  };
-                } else if (image.url) {
-                  return {
-                    url: image.url,
-                    base64Uri: image.url.startsWith('file://') ? null : image.url,
-                    timestamp: image.timestamp || '',
-                  };
-                } else if (image.data && image.timestamp) {
-                  return {
-                    url: `data:${image.contentType};base64,${Buffer.from(image.data).toString('base64')}`,
-                    base64Uri: null,
-                    timestamp: image.timestamp.type.toString(),
-                  };
-                }
-                return null;
-              }).filter(Boolean) as { url: string; base64Uri: string | null; timestamp: string }[]
-            );
-          } else {
-            console.error('Failed to fetch updated album');
+            setCoverImage(updatedAlbum.coverImage.replace('dataimage/jpegbase64', ''));
+            console.log('Updated Album:', updatedAlbum.images.length); // Log the updated album for debugging
+            const temp = [];
+            for (let i = 0; i < updatedAlbum.images.length; i++) {
+              const image = updatedAlbum.images[i].url;
+              console.log('Image URL:', image); // Log the image URL for debugging
+              const newImg = await fetch(`http://recollekt.local:3000/images?url=${image}`, {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              const newImgJson = await newImg.json();
+              console.log('Image:', newImgJson.image.substring(0,100)); // Log the image for debugging
+              temp.push({
+                uri: newImgJson.image,
+                timestamp: updatedAlbum.images[i].timestamp,
+              });
+            }
+            setImages(temp);
           }
         } catch (error) {
           console.error('Error fetching updated album:', error);
@@ -266,8 +210,23 @@ export default function ViewAlbum() {
     }, [_id])
   );
 
-  const renderImage = ({ item, index }: { item: { data: Buffer; contentType: string; timestamp: { type: Date; required: true } }; index: number }) => {
-    const imageUrl = `data:${item.contentType};base64,${Buffer.from(item.data).toString('base64')}`;
+  const renderImage = ({ item, index }: { item: { uri: string; timestamp: any }; index: number }) => {
+    console.log('timestamps:', images[index].timestamp);
+    const imageUrl = item.uri.replace('dataimage/jpegbase64', '');
+    console.log('Image URL:', imageUrl.substring(0, 100)); // Log the image URL for debugging
+    console.log(item.timestamp);
+    let timestampString = '';
+    if (typeof item.timestamp === 'object' && item.timestamp.required) {
+      timestampString = Object.values(item.timestamp).join(''); // Join the values to form the string
+    } else if (typeof item.timestamp === 'string') {
+      timestampString = item.timestamp; // Use the string directly if it's valid
+    }
+    console.log('timestampString:', timestampString);
+    timestampString = timestampString.replace('true', '');
+    console.log('Formatted timestampString:', timestampString); // Format the timestamp string
+    
+
+    const readableDate = new Date(timestampString).toLocaleString(); 
     return (
       <TouchableOpacity onPress={() => handleImagePress(index)} style={styles.imageContainer}>
         <Image
@@ -276,31 +235,12 @@ export default function ViewAlbum() {
           source={{ uri: imageUrl }}
         />
         <Text style={styles.timestampText}>
-          Taken on: {item.timestamp.type instanceof Date ? item.timestamp.type.toLocaleString() : new Date(item.timestamp.type).toLocaleString()}
+          Taken on: {readableDate}
        </Text>
     </TouchableOpacity>
   );
 };
   
-  useEffect(() => {
-    const checkImages = async () => {
-      const updatedImages = await Promise.all(
-        images.map(async (image) => {
-          if (image.url.startsWith('file://')) {
-            const fileExists = await checkFileExists(image.url);
-            if (!fileExists) {
-              console.warn('File not found:', image.url);
-              return { ...image, url: null };
-            }
-          }
-          return image;
-        })
-      );
-      setImages(updatedImages.filter((image) => image.url !== null) as { url: string; base64Uri: string | null; timestamp: string }[]);
-    };
-  
-    checkImages();
-  }, []);
   
 
   return (
@@ -324,9 +264,8 @@ export default function ViewAlbum() {
 
       <FlatList
         data={images.map(image => ({
-          data: Buffer.from(image.url.split(',')[1], 'base64'),
-          contentType: image.url.split(';')[0].split(':')[1],
-          timestamp: { type: new Date(image.timestamp), required: true as true },
+          uri: image.uri,
+          timestamp: image.timestamp,
         }))}
         keyExtractor={(item, index) => index.toString()}
         renderItem={renderImage}
@@ -358,10 +297,10 @@ export default function ViewAlbum() {
               index,
             })}
             renderItem={({ item }) => {
-              console.log('Image URL:', item.url); // Debugging log
+              console.log('Image URL:', item.uri); // Debugging log
               return (
                 <Image
-                  source={{ uri: item.url }}
+                  source={{ uri: item.uri }}
                   style={styles.fullscreenImage}
                   resizeMode="contain"
                 />
@@ -369,7 +308,7 @@ export default function ViewAlbum() {
             }}
           />
           <TouchableOpacity
-            onPress={() => saveImageToCameraRoll(images[currentImageIndex].url)}
+            onPress={() => saveImageToCameraRoll(images[currentImageIndex].uri)}
             style={styles.saveButton}
           >
             <Text style={styles.closeButtonText}>Save</Text>

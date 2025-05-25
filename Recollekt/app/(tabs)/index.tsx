@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ThemedView } from '@/components/ThemedView';
-import { StyleSheet, TouchableOpacity, Text, FlatList, View, Image, Alert } from 'react-native';
+import { StyleSheet, TouchableOpacity, Text, FlatList, View, Image, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +13,8 @@ export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const [albums, setAlbums] = useState([]);
   const [sharedAlbums, setSharedAlbums] = useState([]);// State to hold shared albums
+  const [loading, setLoading] = useState<boolean>(true); // Loading state
+
 
 
   
@@ -21,6 +23,7 @@ export default function HomeScreen() {
     React.useCallback(() => {
       const fetchData = async () => {
         try {
+          setLoading(true); // Set loading to true before fetching data
           // Fetch shared albums
           const token = await AsyncStorage.getItem('token');
           if (!token) {
@@ -57,9 +60,11 @@ export default function HomeScreen() {
             const albumsData = await albumsResponse.json(); // Extract the albums array
             setAlbums(albumsData.albums);
             console.log("ALBUMS", albums);
+            setLoading(false); // Set loading to false after fetching data
           } else {
             console.error('Failed to fetch albums');
             setAlbums([]); // Set to empty array if fetch fails
+            setLoading(false); // Set loading to false even if fetch fails
           }
  // Combine albums and shared albums
         } catch (error) {
@@ -79,6 +84,25 @@ export default function HomeScreen() {
     navigation.navigate('Create' as never); // Navigate to the CreateAlbum screen
   };
 
+  const handleViewAlbum = (albumId: string, title: string, coverImage: string, images: { url: string; timestamp: {type: string; required: true} }[]) => {
+    console.log('View Album button pressed');
+    console.log('Album ID:', albumId);
+    console.log('Title:', title);
+    console.log('Cover Image:', coverImage);
+    console.log('Images:', images);
+
+    navigation.navigate('Albums/ViewAlbum', {
+      _id: albumId,
+      title,
+      coverImage,
+      images: images.map(image => ({
+        uri: image.url, // Assuming image.uri is a string
+        timestamp: image.timestamp // Assuming image.timestamp is a Date object
+      })),
+    });
+  };
+
+
   
   const renderAlbum = ({ item }: { item: any }) => {
 // Log the Base64 string
@@ -91,7 +115,7 @@ export default function HomeScreen() {
       <TouchableOpacity
         style={styles.albumContainer}
         onPress={() => {
-          console.log('Album pressed:', item);
+          handleViewAlbum(item._id, item.title, imageUri, item.images); // Pass the full URI to the function
         }}
       >
         <Image
@@ -102,6 +126,16 @@ export default function HomeScreen() {
       </TouchableOpacity>
     );
   };
+
+  if (loading) {
+    // Show loading indicator while fetching
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0000ff" />
+        <Text>Loading albums...</Text>
+      </View>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -175,5 +209,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 30,
     fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

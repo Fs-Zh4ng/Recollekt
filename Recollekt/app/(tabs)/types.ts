@@ -5,29 +5,21 @@ export type RootStackParamList = {
     'Albums/ViewAlbum': {
       _id: string; // Album ID
       title: string;
-      coverImage: { 
-        data: Buffer,
-        contentType: string
-       },
+      coverImage: string,
       images: 
         {
-          data: Buffer,
-          contentType: string, // Image URL
-          timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
+          uri: string, // Image URL
+          timestamp: { type: string, required: true }, // Timestamp for when the image was taken
         }[],// Array of images with url and timestamp
     }; // Parameters for the ViewAlbum screen
     'Albums/EditAlbum': {
       _id: string; // Album ID
       title: string;
-      coverImage: { 
-        data: Buffer,
-        contentType: string
-       },
+      coverImage: string,
       images: 
         {
-          data: Buffer,
-          contentType: string, // Image URL
-          timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
+          uri: string, // Image URL
+          timestamp: { type: string, required: true }, // Timestamp for when the image was taken
         }[], // Array of images with url and timestamp
     }; // Parameters for the EditAlbum screen
   };
