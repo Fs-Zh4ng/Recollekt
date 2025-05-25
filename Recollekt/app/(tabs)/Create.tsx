@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from 'expo-image-picker'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserContext, UserContextType } from '../UserContext';
 import { jwtDecode } from 'jwt-decode';
@@ -9,153 +9,126 @@ import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/netwo
 import * as MediaLibrary from 'expo-media-library';
 
 
-
-
-
-
-
 export default function CreateAlbum() {
   const [serverIP, setServerIP] = useState<string | null>(null);
 
 
+  const convertToISO8601 = (input: string): string => {
+    // Replace ":" with "-" in date portion and split
+    const [datePart, timePart] = input.split(' ');
+    const [year, month, day] = datePart.split(':');
+  
+    // Construct a valid ISO string
+    const isoString = new Date(`${year}-${month}-${day}T${timePart}Z`).toISOString();
+  
+    return isoString;
+  };
+  
   const [albumName, setAlbumName] = useState('');
-  const [coverImage, setCoverImage] = useState<string | null>(null);
-  const [albumImages, setAlbumImages] = useState<string[]>([]);
+  const [coverImage, setCoverImage] = useState('');
+  const [albumImages, setAlbumImages] = useState<{uri: string; timestamp: Date}[]>([]);
   const [imageTimestamps, setImageTimestamps] = useState<string[]>([]);
 
     const { user } = useContext(UserContext) as UserContextType;
   const navigation = useNavigation();
 
   const handlePickCoverImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    let result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       quality: 1,
+      exif: true,
+      base64: true,
     });
-
     if (!result.canceled) {
-      setCoverImage(result.assets[0].uri);
+      setCoverImage('data:image/jpeg;base64,' + result.assets[0].base64);
+      console.log('Selected cover image:', result.assets[0].exif);
+    } else {
+      console.log('Cover image selection canceled');
     }
   };
-
 
   const handleAddImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
+      quality: 1,
       exif: true,
+      base64: true,
     });
 
     if (!result.canceled) {
-      const newImageUris: string[] = [];
-      const newTimestamps: string[] = [];
-
-      for (const asset of result.assets) {
-        newImageUris.push(asset.uri);
-
-        let timestamp = new Date().toISOString(); // Default
-
-        try {
-          const createdAsset = await MediaLibrary.createAssetAsync(asset.uri);
-          const assetInfo = await MediaLibrary.getAssetInfoAsync(createdAsset.id);
-          const exifData = assetInfo.exif as { [key: string]: any };
-          console.log('EXIF Data:', exifData);
-
-          if (exifData && exifData.DateTimeOriginal) {
-            // Clean and convert timestamp
-            const cleanedDate = exifData.DateTimeOriginal.replace(/:/g, '-');
-            timestamp = new Date(cleanedDate).toISOString();
-          }
-        } catch (error) {
-          console.warn('Failed to retrieve EXIF data:', error);
-        }
-
-        newTimestamps.push(timestamp);
+      const imageUri: { uri: string; timestamp: Date }[] = [];
+      console.log('Selected images:', result.assets.length);
+      for (let i = 0; i < result.assets.length; i++) {
+        const time = convertToISO8601(result.assets[i].exif?.DateTime || new Date().toISOString());
+        imageUri.push({uri: 'data:image/jpeg;base64,' + result.assets[i].base64, timestamp: new Date(time)});
+        console.log(new Date(time));
       }
-
-      setAlbumImages((prev) => [...prev, ...newImageUris]);
-      setImageTimestamps((prev) => [...prev, ...newTimestamps]);
+      setAlbumImages((prevImages) => [...prevImages, ...imageUri]);
+      // console.log('Selected images:', albumImages);
+    } else {
+      console.log('Image selection canceled');
     }
   };
-
   const handleCreateAlbum = async () => {
-    if (!albumName || !coverImage) {
-      Alert.alert('Error', 'Please enter an album name and select a cover image');
+    if (!albumName || !coverImage || albumImages.length === 0) {
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
+    const token = await AsyncStorage.getItem('token');
+    if (!token) {
+      console.error('No token found');
+      return;
+    }
+
+
+  const formData = new FormData();
+  formData.append('title', albumName);
+  formData.append('coverImage', coverImage); // Base64 string
+
+  // Append each image and its timestamp
+  albumImages.forEach((image, index) => {
+    formData.append(`images[${index}]`, image.uri); // Base64 string
+    formData.append(`timestamps[${index}]`, image.timestamp.toISOString() || new Date().toISOString());
+  });// Log the form data for debugging
+   // Log the form data for debugging
+
+  // console.log('Form data:', formData);
+  // formData.forEach((value, key) => {
+  //   console.log(key, value);
+  // }); // Log the form data for debugging
+
+
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (!token) {
-        Alert.alert('Error', 'Authentication token is missing. Please log in again.');
-        return;
-      }
-
-      const decodedToken = jwtDecode<{ id: string }>(token);
-      const creatorId = decodedToken.id;
-
-      const formData = new FormData();
-      formData.append('title', albumName);
-      formData.append('creatorId', creatorId);
-
-      const coverImageName = coverImage.split('/').pop();
-      const coverImageType = `image/${coverImageName?.split('.').pop()}`;
-      formData.append('coverImage', {
-        uri: coverImage,
-        name: coverImageName,
-        type: coverImageType,
-      } as any);
-
-      for (let i = 0; i < albumImages.length; i++) {
-        const imageUri = albumImages[i];
-        const imageName = imageUri.split('/').pop();
-        const imageType = `image/${imageName?.split('.').pop()}`;
-
-        formData.append('images', {
-          uri: imageUri,
-          name: imageName,
-          type: imageType,
-        } as any);
-
-        formData.append('imageTimestamps[]', imageTimestamps[i]);
-        console.log('Image Timestamp:', imageTimestamps[i]);
-      }
-
       const response = await fetch(`http://recollekt.local:3000/albums`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: formData,
       });
-
-      const text = await response.text();
-      console.log('Server Response:', text);
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (err) {
-        console.error('Error parsing JSON:', err);
-        data = { error: text };
-      }
+      console.log('Response:', response); // Log the response for debugging
 
       if (response.ok) {
-        Alert.alert('Success', 'Album created successfully!');
+        const data = await response.json();
+        console.log('Album created successfully:', data);
+        Alert.alert('Success', 'Album created successfully');
+        // Clear the form
         setAlbumName('');
-        setCoverImage(null);
+        setCoverImage('');
         setAlbumImages([]);
         setImageTimestamps([]);
         navigation.navigate('index' as never);
       } else {
-        Alert.alert('Error', data.error || 'Failed to create album');
+        console.error('Failed to create album:', await response.json());
+        Alert.alert('Error', 'Failed to create album');
       }
     } catch (error) {
       console.error('Error creating album:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
+      Alert.alert('Error', 'An error occurred while creating the album');
     }
   };
-
   return (
     <KeyboardAvoidingView
   style={{ flex: 1 }}
@@ -188,7 +161,7 @@ export default function CreateAlbum() {
 
     <View style={styles.imageList}>
       {albumImages.map((imageUri, index) => (
-        <Image key={index} source={{ uri: imageUri }} style={styles.imagePreviewSmall} />
+        <Image key={index} source={{ uri: imageUri.uri }} style={styles.imagePreviewSmall} />
       ))}
     </View>
 

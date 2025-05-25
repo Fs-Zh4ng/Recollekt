@@ -2,15 +2,12 @@ const mongoose = require('mongoose');
 
 const albumSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  coverImage: { 
-    data: Buffer,
-    contentType: String
-   },
+  coverImage: { type: String }, // Store the S3 URL for the cover image
   images: [
     {
-      data: Buffer,
-      contentType: String, // Image URL
-      timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
+      url: { type: String, required: true }, // S3 URL for the image
+      contentType: String, // MIME type of the image
+      timestamp: { type: String, required: true }, // Timestamp for when the image was taken
     },
   ],
   creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

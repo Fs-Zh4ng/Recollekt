@@ -15,31 +15,36 @@ const os = require('os');
 const bonjour = require('bonjour')();
 const multer = require('multer');
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+require('dotenv').config();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fieldSize: 25 * 1024 * 1024, // 25 MB per field
+  },
+});
 const { Buffer } = require('buffer');
-const exif = require('exif-parser');
+const AWS = require('aws-sdk');
 
 // Set FFmpeg and FFprobe paths
 ffmpeg.setFfmpegPath('/opt/homebrew/bin/ffmpeg'); // Update this path as needed
 ffmpeg.setFfprobePath('/opt/homebrew/bin/ffprobe'); // Update this path as needed
 
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+// Configure S3 client
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-const getLocalIPAddress = () => {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address; // Return the first non-internal IPv4 address
-      }
-    }
-  }
-  return 'localhost'; // Fallback to localhost if no IP is found
-};
+app.use(bodyParser.json({limit: '100mb'}));
+app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
 bonjour.publish({
   name: 'Recollekt Backend',
@@ -69,21 +74,6 @@ mongoose.connection.on('error', (err) => {
   console.error('Error connecting to MongoDB:', err);
 });
 
-const extractExifTimestamp = (filePath) => {
-  try {
-    const buffer = fs.readFileSync(filePath); // Read the image file
-    const parser = ExifParser.create(buffer);
-    const result = parser.parse();
-
-    // Return the EXIF DateTimeOriginal or null if not available
-    return result.tags.DateTimeOriginal
-      ? new Date(result.tags.DateTimeOriginal * 1000) // Convert EXIF timestamp to JavaScript Date
-      : null;
-  } catch (error) {
-    console.error(`Error extracting EXIF metadata for file ${filePath}:`, error);
-    return null; // Return null if EXIF metadata cannot be extracted
-  }
-};
 
 app.get('/friends/pending', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -107,6 +97,99 @@ app.get('/friends/pending', async (req, res) => {
   } catch (error) {
     console.error('Error fetching pending requests:', error);
     res.status(500).json({ error: 'Failed to fetch pending requests' });
+  }
+});
+
+const uploadToS3 = async (base64Image, fileName) => {
+  const buffer = Buffer.from(base64Image, 'base64');
+  const params = {
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: fileName,
+    Body: buffer,
+    ContentType: 'image/jpeg',
+    ACL: 'public-read',
+  };
+
+  const command = new PutObjectCommand(params);
+  const uploadResult = await s3.send(command);
+  return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+};
+
+app.post('/albums', upload.none(), async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+ // Debugging log
+  console.log('Received request body:', req.body); // Debugging log
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret');
+    console.log('Decoded token:', decodedToken); // Debugging log
+    const userId = decodedToken.id;
+
+    const { title, coverImage } = req.body;
+    const images = req.body.images; 
+    const timestamps = req.body.timestamps;// Use the correct field name for timestamps
+    console.log('Received images:', req.body.images); // Debugging log
+    console.log('Received cover image:', req.body.coverImage); // Debugging log
+    console.log('Received title:', req.body.title); // Debugging log
+    console.log('Received timestamps:', req.body.timestamps); // Debugging log
+
+    // Helper function to upload Base64 image to S3
+    const uploadToS3 = async (base64Image, fileName) => {
+      const buffer = Buffer.from(base64Image, 'base64');
+      const params = {
+        Bucket: process.env.AWS_S3_BUCKET_NAME,
+        Key: fileName,
+        Body: buffer,
+        ContentType: 'image/jpeg',
+      };
+
+      try {
+        const command = new PutObjectCommand(params);
+        const response = await s3.send(command);
+        console.log('Upload successful:', response);
+        return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+      } catch (error) {
+        console.error('Error uploading to S3:', error);
+        throw error;
+      }
+    };
+
+    // Upload cover image
+    const coverImageUrl = await uploadToS3(coverImage, `albums/${userId}/cover.jpg`);
+
+    // Upload album images
+    const imageUrls = [];
+    const imageArray = Array.isArray(images) ? images : [images]; // Handle single or multiple images
+    const timestampArray = Array.isArray(timestamps) ? timestamps : [timestamps]; // Handle single or multiple timestamps
+
+    for (const [index, image] of imageArray.entries()) {
+      const imageUrl = await uploadToS3(image, `albums/${userId}/image_${index}.jpg`);
+      const time = new Date(timestampArray[index]);
+      imageUrls.push({
+        url: imageUrl,
+        timestamp: timestampArray[index] || new Date(), // Use provided timestamp or fallback to current date
+      });
+    }
+
+
+
+    // Save album to MongoDB
+    const album = new Album({
+      title,
+      coverImage: coverImageUrl,
+      images: imageUrls,
+      creatorId: userId,
+    });
+
+    await album.save();
+
+    res.status(201).json({ message: 'Album created successfully', album });
+  } catch (error) {
+    console.error('Error creating album:', error);
+    res.status(500).json({ error: 'Failed to create album' });
   }
 });
 
@@ -318,41 +401,6 @@ app.post('/friends/approve', async (req, res) => {
 
 
 
-app.put('/edit-album', async (req, res) => {
-  const { id, title } = req.body;
-
-  try {
-    const updateData = {};
-
-    if (title) updateData.title = title;
-
-    if (req.files['coverImage']?.[0]) {
-      const file = req.files['coverImage'][0];
-      updateData.coverImage = {
-        data: file.buffer,
-        contentType: file.mimetype
-      };
-    }
-
-    if (req.files['images']) {
-      updateData.images = req.files['images'].map(file => ({
-        data: file.buffer,
-        contentType: file.mimetype
-      }));
-    }
-
-    const album = await Album.findByIdAndUpdate(id, updateData, { new: true });
-
-    if (!album) {
-      return res.status(404).json({ error: 'Album not found' });
-    }
-
-    res.status(200).json({ message: 'Album updated successfully', album });
-  } catch (error) {
-    console.error('Error updating album:', error);
-    res.status(500).json({ error: 'Failed to update album' });
-  }
-});
 
 app.post('/albums/:id/share', async (req, res) => {
   const { id } = req.params;
@@ -457,39 +505,6 @@ app.delete('/albums/:id', async (req, res) => {
 }
 );
 
-app.get('/albums/:id', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1]; // Extract the token from the Authorization header
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' }); // Return 401 if no token is provided
-  }
-
-  try {
-    // Verify the token
-    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace 'your_jwt_secret' with your actual JWT secret
-    const userId = decodedToken.id; // Extract the user ID from the token
-
-    // Find the album by ID and ensure it belongs to the authenticated user
-    const album = await Album.findOne({ _id: req.params.id, creatorId: userId });
-    if (!album) {
-      return res.status(404).json({ error: 'Album not found' }); // Return 404 if the album is not found
-    }
-
-    // Return the album details
-    res.status(200).json({
-      id: album._id,
-      title: album.title,
-      coverImage: album.coverImage,
-      images: album.images,
-      creatorId: album.creatorId,
-    });
-  } catch (error) {
-    console.error('Error fetching album:', error);
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: 'Invalid token' }); // Return 401 if the token is invalid
-    }
-    res.status(500).json({ error: 'Failed to fetch album' }); // Return 500 for other errors
-  }
-});
 
 app.get('/albums', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -510,55 +525,6 @@ app.get('/albums', async (req, res) => {
 });
 
  // Use multer's memory storage
-
-
- app.post('/albums', upload.fields([{ name: 'coverImage' }, { name: 'images' }]), async (req, res) => {
-  try {
-    const { title, creatorId } = req.body;
-    const coverImage = req.files['coverImage']?.[0];
-    const images = req.files['images'] || [];
-
-    const coverImageData = coverImage
-      ? { data: coverImage.buffer, contentType: coverImage.mimetype }
-      : null;
-
-    const albumImages = images.map((file) => {
-      const parser = exif.create(file.buffer);
-      let exifData = {};
-      try {
-        exifData = parser.parse();
-      } catch (err) {
-        console.warn('Failed to parse EXIF data:', err);
-      }
-
-      let timestamp = exifData.tags.DateTimeOriginal || exifData.tags.CreateDate;
-      if (timestamp && typeof timestamp === 'number') {
-        timestamp = new Date(timestamp * 1000); // convert EXIF timestamp to JS Date
-      } else {
-        timestamp = new Date(); // fallback if no EXIF timestamp found
-      }
-
-      return {
-        data: file.buffer,
-        contentType: file.mimetype,
-        timestamp: timestamp,
-      };
-    });
-
-    const album = new Album({
-      title,
-      creatorId,
-      coverImage: coverImageData,
-      images: albumImages,
-    });
-    await album.save();
-
-    res.status(201).json({ message: 'Album created successfully' });
-  } catch (error) {
-    console.error('Error creating album:', error);
-    res.status(500).json({ error: 'Failed to create album' });
-  }
-});
 
 // 1. User Registration
 app.post('/signup', async (req, res) => {
@@ -596,33 +562,6 @@ app.post('/signup', async (req, res) => {
 });
 
 
-
-app.put('/user/profile-picture', async (req, res) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  const { profileImage } = req.body;
-
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  try {
-    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
-    const userId = decodedToken.id;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    user.profileImage = profileImage; // Update the profile image
-    await user.save();
-
-    res.status(200).json(user); // Return the updated user
-  } catch (error) {
-    console.error('Error updating profile picture:', error);
-    res.status(500).json({ error: 'Failed to update profile picture' });
-  }
-});
 
 // 2. User Login
 app.post('/login', async (req, res) => {

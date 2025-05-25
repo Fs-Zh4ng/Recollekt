@@ -70,55 +70,36 @@ export default function HomeScreen() {
     }, [])
   );
 
-  const handleViewAlbum = (album: { _id: string; title: string; coverImage: { 
-    data: Buffer,
-    contentType: string
-   }; images: {
-    data: Buffer,
-    contentType: String, // Image URL
-    timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
-  }[] }) => {
-    navigation.navigate('Albums/ViewAlbum', {
-      ...album,
-      coverImage: {
-        data: Buffer.from(album.coverImage.data), // Ensure data is a Buffer
-        contentType: album.coverImage.contentType,
-      }, // Convert coverImage to an object with data and contentType
-      images: album.images.map(image => ({
-        data: Buffer.from(image.data), // Ensure data is a Buffer
-        contentType: image.contentType as string, // Ensure contentType is treated as a primitive string
-        timestamp: { type: new Date(image.timestamp.type), required: true }, // Match the expected timestamp structure
-      })),
-    }); // Pass album details as params
-  };
+  // const handleViewAlbum = (album: { _id: string; title: string; coverImage: { 
+  //   data: Buffer,
+  //   contentType: string
+  //  }; images: {
+  //   data: Buffer,
+  //   contentType: String, // Image URL
+  //   timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
+  // }[] }) => {
+  //   navigation.navigate('Albums/ViewAlbum', {
+  //     ...album,
+  //     coverImage: {
+  //       data: Buffer.from(album.coverImage.data), // Ensure data is a Buffer
+  //       contentType: album.coverImage.contentType,
+  //     }, // Convert coverImage to an object with data and contentType
+  //     images: album.images.map(image => ({
+  //       data: Buffer.from(image.data), // Ensure data is a Buffer
+  //       contentType: image.contentType as string, // Ensure contentType is treated as a primitive string
+  //       timestamp: { type: new Date(image.timestamp.type), required: true }, // Match the expected timestamp structure
+  //     })),
+  //   }); // Pass album details as params
+  // };
 
   const handleCreate = () => {
     console.log('Create button pressed');
+    console.log(navigation.getState().routes);
     navigation.navigate('Create' as never); // Navigate to the CreateAlbum screen
   };
 
   
   const renderAlbum = ({ item }: { item: any }) => {
-    let imageSource;
-    console.log(item.coverImage);
-    if (typeof item.coverImage === 'string') {
-      imageSource = item.coverImage.startsWith('data:image')
-        ? { uri: item.coverImage }
-        : { uri: `http://recollekt.local:3000/${item.coverImage}` };
-    } else if (item.coverImage?.data && item.coverImage?.contentType) {
-      const base64Image = `data:${item.coverImage.contentType};base64,${fromByteArray(item.coverImage.data)}`;
-      console.log("BASE64 IMAGE", base64Image);
-      imageSource = { uri: base64Image };
-    }
-    console.log("IMAGE SOURCE", imageSource);
-    return (
-      <TouchableOpacity onPress={() => handleViewAlbum(item)}>
-        <View style={styles.albumContainer}>
-          <Image source={imageSource} style={styles.albumCover} />
-          <Text style={styles.albumTitle}>{item.title}</Text>
-        </View>
-      </TouchableOpacity>
-    );
   };
 
   return (
@@ -126,15 +107,15 @@ export default function HomeScreen() {
       <Text style={{ fontSize: 40, fontWeight: 'bold', textAlign: 'center', marginTop: 20, marginBottom: 20, fontFamily: 'Inter' }}>
         Your Albums
       </Text>
-      <FlatList
+      {/* <FlatList
         data={[...(albums || []), ...(sharedAlbums || [])]} // Use the combined albums array
         keyExtractor={(item) => item._id} // Assuming each album has a unique `_id`
-        renderItem={renderAlbum}
+        // renderItem={renderAlbum}
         numColumns={2}
         contentContainerStyle={styles.albumList}
         ListEmptyComponent={<Text style={styles.emptyText}>No albums found</Text>}
         style={{ width: '100%', alignSelf: 'center' }} // Add margin to the d bottom of the FlatList
-      />
+      /> */}
       <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
         <Text style={styles.plusSign}>+</Text>
       </TouchableOpacity>
