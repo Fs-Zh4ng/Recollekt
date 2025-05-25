@@ -29,7 +29,8 @@ const AWS = require('aws-sdk');
 ffmpeg.setFfmpegPath('/opt/homebrew/bin/ffmpeg'); // Update this path as needed
 ffmpeg.setFfprobePath('/opt/homebrew/bin/ffprobe'); // Update this path as needed
 
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { get } = require('http');
 
 // Configure S3 client
 const s3 = new S3Client({
@@ -39,6 +40,11 @@ const s3 = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
+
+const extractKeyFromUrl = (url) => {
+  const urlObj = new URL(url);
+  return urlObj.pathname.substring(1); // Remove the leading '/'
+};
 
 const app = express();
 app.use(cors());
@@ -100,20 +106,7 @@ app.get('/friends/pending', async (req, res) => {
   }
 });
 
-const uploadToS3 = async (base64Image, fileName) => {
-  const buffer = Buffer.from(base64Image, 'base64');
-  const params = {
-    Bucket: process.env.AWS_S3_BUCKET_NAME,
-    Key: fileName,
-    Body: buffer,
-    ContentType: 'image/jpeg',
-    ACL: 'public-read',
-  };
 
-  const command = new PutObjectCommand(params);
-  const uploadResult = await s3.send(command);
-  return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-};
 
 app.post('/albums', upload.none(), async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -138,10 +131,11 @@ app.post('/albums', upload.none(), async (req, res) => {
 
     // Helper function to upload Base64 image to S3
     const uploadToS3 = async (base64Image, fileName) => {
+      const uniqueFileName = `${Date.now()}-${fileName}`;
       const buffer = Buffer.from(base64Image, 'base64');
       const params = {
         Bucket: process.env.AWS_S3_BUCKET_NAME,
-        Key: fileName,
+        Key: uniqueFileName,
         Body: buffer,
         ContentType: 'image/jpeg',
       };
@@ -150,7 +144,7 @@ app.post('/albums', upload.none(), async (req, res) => {
         const command = new PutObjectCommand(params);
         const response = await s3.send(command);
         console.log('Upload successful:', response);
-        return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+        return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${uniqueFileName}`;
       } catch (error) {
         console.error('Error uploading to S3:', error);
         throw error;
@@ -505,6 +499,42 @@ app.delete('/albums/:id', async (req, res) => {
 }
 );
 
+const getBase64FromS3 = async (bucketName, key) => {
+  const s3 = new S3Client({
+    region: process.env.AWS_REGION, // Set your AWS region
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+  console.log('Fetching image from S3:', bucketName, key); // Debugging log
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+    });
+
+    const response = await s3.send(command);
+
+    // Read the image data from the response stream
+    const chunks = [];
+    for await (const chunk of response.Body) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+
+    // Convert the buffer to Base64
+    const base64 = buffer.toString('base64');
+    const contentType = response.ContentType; // Get the content type (e.g., image/jpeg)
+
+    return `data:${contentType};base64,${base64}`; // Return the Base64 string with the data URI prefix
+  } catch (error) {
+    console.error('Error fetching the image from S3:', error.message);
+    throw error;
+  }
+};
+
 
 app.get('/albums', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -516,7 +546,12 @@ app.get('/albums', async (req, res) => {
     const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
     const userId = decodedToken.id;
 
-    const albums = await Album.find({ creatorId: userId }); // Fetch albums for the current user
+    const albums = await Album.find({ creatorId: userId });
+    console.log('Fetched albums:', albums.length); // Debugging log
+    for (i = 0; i < albums.length; i++) {
+      const album = albums[i];
+      album.coverImage = await getBase64FromS3(process.env.AWS_S3_BUCKET_NAME, extractKeyFromUrl(album.coverImage));
+    }// Fetch albums for the current user
     res.status(200).json({ albums });
   } catch (error) {
     console.error('Error fetching albums:', error);

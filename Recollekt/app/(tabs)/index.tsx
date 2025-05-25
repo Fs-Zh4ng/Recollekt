@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from './types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, '(tabs)/index'>;
-import { fromByteArray } from 'base64-js';
+import ImageResizer from 'react-native-image-resizer';
 
 
 export default function HomeScreen() {
@@ -14,6 +14,8 @@ export default function HomeScreen() {
   const [albums, setAlbums] = useState([]);
   const [sharedAlbums, setSharedAlbums] = useState([]);// State to hold shared albums
 
+
+  
   // Fetch albums from the backend
   useFocusEffect(
     React.useCallback(() => {
@@ -70,27 +72,6 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // const handleViewAlbum = (album: { _id: string; title: string; coverImage: { 
-  //   data: Buffer,
-  //   contentType: string
-  //  }; images: {
-  //   data: Buffer,
-  //   contentType: String, // Image URL
-  //   timestamp: { type: Date, required: true }, // Timestamp for when the image was taken
-  // }[] }) => {
-  //   navigation.navigate('Albums/ViewAlbum', {
-  //     ...album,
-  //     coverImage: {
-  //       data: Buffer.from(album.coverImage.data), // Ensure data is a Buffer
-  //       contentType: album.coverImage.contentType,
-  //     }, // Convert coverImage to an object with data and contentType
-  //     images: album.images.map(image => ({
-  //       data: Buffer.from(image.data), // Ensure data is a Buffer
-  //       contentType: image.contentType as string, // Ensure contentType is treated as a primitive string
-  //       timestamp: { type: new Date(image.timestamp.type), required: true }, // Match the expected timestamp structure
-  //     })),
-  //   }); // Pass album details as params
-  // };
 
   const handleCreate = () => {
     console.log('Create button pressed');
@@ -100,6 +81,26 @@ export default function HomeScreen() {
 
   
   const renderAlbum = ({ item }: { item: any }) => {
+// Log the Base64 string
+  
+    const imageUri = item.coverImage.replace('dataimage/jpegbase64', ''); // Remove the prefix for the URI
+    console.log('Cover Image Base64 (truncated):', imageUri.substring(0, 100));
+
+  
+    return (
+      <TouchableOpacity
+        style={styles.albumContainer}
+        onPress={() => {
+          console.log('Album pressed:', item);
+        }}
+      >
+        <Image
+          source={{ uri: imageUri }} // Use the full URI
+          style={styles.albumCover}
+        />
+        <Text style={styles.albumTitle}>{item.title}</Text>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -107,15 +108,15 @@ export default function HomeScreen() {
       <Text style={{ fontSize: 40, fontWeight: 'bold', textAlign: 'center', marginTop: 20, marginBottom: 20, fontFamily: 'Inter' }}>
         Your Albums
       </Text>
-      {/* <FlatList
+      <FlatList
         data={[...(albums || []), ...(sharedAlbums || [])]} // Use the combined albums array
         keyExtractor={(item) => item._id} // Assuming each album has a unique `_id`
-        // renderItem={renderAlbum}
+        renderItem={renderAlbum}
         numColumns={2}
         contentContainerStyle={styles.albumList}
         ListEmptyComponent={<Text style={styles.emptyText}>No albums found</Text>}
         style={{ width: '100%', alignSelf: 'center' }} // Add margin to the d bottom of the FlatList
-      /> */}
+      />
       <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
         <Text style={styles.plusSign}>+</Text>
       </TouchableOpacity>
