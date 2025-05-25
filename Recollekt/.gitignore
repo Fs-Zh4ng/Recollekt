@@ -79,4 +79,4 @@ yarn-error.*
 *.tsbuildinfo
 
 # @end expo-cli
-Recollekt/.env
+.env
