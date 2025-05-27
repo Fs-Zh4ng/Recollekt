@@ -97,10 +97,22 @@ export default function LoginScreen() {
         console.log(data.username);
         console.log(data.friends);
         console.log(data.profileImage);
+        let img = data.profileImage; // Default to the provided profileImage
+        if (!(data.profileImage == '/Users/Ferdinand/NoName/Recollekt/assets/images/DefProfile.webp')) {
+          const profImage = await fetch(`http://recollekt.local:3000/images?url=${data.profileImage}`, {
+            method: 'GET',
+          });
+          console.log(profImage);
+          const img1 = await profImage.json();
+          console.log(img1.image.substring(0, 100));
+          img = img1.image.replace('dataimage/jpegbase64', ''); // Extract the image URL from the response
+        }
+        
+ // Log the first 100 characters of the image URL for debugging
         setUser({
           username: data.username,
           friends: data.friends || [], // Use an empty array if friends are not provided
-          profileImage: data.profileImage || '', // Use an empty string if profileImage is not provided
+          profileImage: img || '', // Use an empty string if profileImage is not provided
         }); // Set user data in context
         setIsAuthenticated(true);
         

@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { View, Text, StyleSheet, Button, Image, FlatList, Alert, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 import { UserContext, UserContextType } from '../UserContext';
 import { AuthContext } from '../_layout'; // Adjust the path to your UserContext file
@@ -34,15 +35,18 @@ export default function ProfileScreen() {
 
       // Open the image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1], // Square aspect ratio
         quality: 1,
+        base64: true, // Get base64 encoded image
       });
 
       if (!result.canceled) {
-        const selectedImage = result.assets[0].uri; // Get the selected image URI
-        setProfileImage(selectedImage);
+        const selectedImage = result.assets[0].base64; // Get the selected image URI
+        if (selectedImage) {
+          setProfileImage('data:image/jpeg;base64,'+selectedImage);
+          console.log('Selected profile image:', selectedImage.substring(0, 50) + '...'); // Log the first 50 characters of the base64 string
+        }
 
         // Update the profile picture on the backend
         const token = await AsyncStorage.getItem('token');
@@ -51,13 +55,16 @@ export default function ProfileScreen() {
           return;
         }
 
+        const formData = new FormData();
+        formData.append('profileImage', profileImage);
+
         const response = await fetch(`http://recollekt.local:3000/user/profile-picture`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ profileImage: selectedImage }),
+          body: formData,
         });
 
         if (response.ok) {
@@ -92,7 +99,9 @@ export default function ProfileScreen() {
     }
   };
 
-  useEffect(() => {
+  useFocusEffect(
+    
+    React.useCallback(() => {
     // Fetch pending friend requests from the backend
     const fetchPendingRequests = async () => {
       try {
@@ -114,8 +123,30 @@ export default function ProfileScreen() {
       }
     };
 
+    const fetchUserProfile = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const response = await fetch(`http://recollekt.local:3000/user/profile`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setUser(data.user); // Set initial profile image
+        }
+        else {
+          console.error('Failed to fetch user profile:', data.error);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+    };
+    fetchUserProfile();
+
     fetchPendingRequests();
-  }, []);
+  }, []));
 
 
   const handleSendFriendRequest = async () => {

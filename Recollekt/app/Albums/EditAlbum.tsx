@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import { useFocusEffect } from 'expo-router';
 
 
 
@@ -14,9 +15,19 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/Edit
 type EditAlbumRouteProp = RouteProp<RootStackParamList, 'Albums/EditAlbum'>;
 
 
+const convertToISO8601 = (input: string): string => {
+  // Replace ":" with "-" in date portion and split
+  const [datePart, timePart] = input.split(' ');
+  const [year, month, day] = datePart.split(':');
+
+  // Construct a valid ISO string
+  const isoString = new Date(`${year}-${month}-${day}T${timePart}Z`).toISOString();
+
+  return isoString;
+};
+
 
 export default function EditAlbum() {
-  const [serverIP, setServerIP] = useState<string | null>(null);
 
 
   const route = useRoute<EditAlbumRouteProp>();
@@ -24,51 +35,82 @@ export default function EditAlbum() {
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
 
   const [title, setTitle] = useState(initialTitle);
-  const [coverImage, setCoverImage] = useState<{ data: Buffer<ArrayBufferLike>; contentType: string }>(initialCoverImage);
-  const [images, setImages] = useState<{ url: string; timestamp: string }[]>(
-      (initialImages || []).map((image) => {
-        if (typeof image === 'string') {
-          return { url: image, timestamp: '' };
-        } else if ('data' in image && 'contentType' in image && 'timestamp' in image) {
-          return { url: '', timestamp: image.timestamp.toString() };
-        } else {
-          return image;
-        }
-      })
-    );
+  const [coverImage, setCoverImage] = useState<string>(initialCoverImage);
+
+  const [images, setImages] = useState<{ uri: string; timestamp: { type: string; required: true }; }[]>(
+    initialImages.map(image => ({
+      ...image,
+      timestamp: { ...image.timestamp, required: true },
+    }))
+  );
+
+  const changeImage = async (uri: string) => {
+    const res = await fetch(`http://recollekt.local:3000/images?url=${uri}`, {
+      method: 'GET',
+    });
+    const data = await res.json();
+    return data.image.replace('dataimage/jpegbase64', '');
+  };
+
+  useFocusEffect(() => {
+    (async () => {
+      for (const image of images) {
+        const img = await changeImage(image.uri);
+        setImages((prevImages) =>
+          prevImages.map((imgItem) =>
+            imgItem.uri === image.uri ? { ...imgItem, uri: img } : imgItem
+          )
+        );
+      }
+      if (coverImage.startsWith('https')) {
+        const img = await changeImage(coverImage);
+        setCoverImage(img);
+      }
+    })();
+  });
+
+
+
   const handlePickCoverImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    let result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       quality: 1,
+      exif: true,
+      base64: true,
     });
-
     if (!result.canceled) {
-      setCoverImage({
-        data: Buffer.from(result.assets[0].uri, 'base64'),
-        contentType: 'image/jpeg', // Adjust the content type as needed
-      });
+      setCoverImage('data:image/jpeg;base64,' + result.assets[0].base64);
+      console.log('Selected cover image:', result.assets[0].exif);
+    } else {
+      console.log('Cover image selection canceled');
     }
   };
 
   const handleAddImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 1,
+      exif: true,
+      base64: true,
     });
 
     if (!result.canceled) {
-      const selectedImages = result.assets.map((asset) => asset.uri);
-      setImages((prevImages) => [
-        ...prevImages,
-        ...selectedImages.map((uri) => ({ url: uri, timestamp: '' })),
-      ]);
+      const imageUri: { uri: string; timestamp: {type: string; required: true} }[] = [];
+      console.log('Selected images:', result.assets.length);
+      for (let i = 0; i < result.assets.length; i++) {
+        const time = convertToISO8601(result.assets[i].exif?.DateTime || new Date().toISOString());
+        imageUri.push({uri: 'data:image/jpeg;base64,' + result.assets[i].base64, timestamp: {type: time, required: true}});
+        console.log(new Date(time));
+      }
+      setImages((prevImages) => [...prevImages, ...imageUri]);
+      // console.log('Selected images:', albumImages);
+    } else {
+      console.log('Image selection canceled');
     }
   };
 
   const handleDeleteImage = (imageUri: string) => {
-    setImages((prevImages) => prevImages.filter((img) => img.url !== imageUri));
+    setImages((prevImages) => prevImages.filter((img) => img.uri !== imageUri));
   };
 
   const handleSave = async () => {
@@ -86,52 +128,39 @@ export default function EditAlbum() {
     
         // Decode the token to get the user ID
         const decodedToken = jwtDecode<{ id: string }>(token);
-              const creatorId = decodedToken.id;
+              const id = route.params._id;
           
               const formData = new FormData();
+              formData.append('id', id); // Include the creator ID
               formData.append('title', title);
-              formData.append('creatorId', creatorId);
-          
-              // Attach cover image
-              const coverImageName = 'cover_image.jpg'; // Replace with a default or dynamically generated name
-              const coverImageType = `image/${coverImageName?.split('.').pop()}`;
-              formData.append('coverImage', {
-                uri: coverImage,
-                name: coverImageName,
-                type: coverImageType,
-              } as any);
-          
-              // Attach album images
-              for (let i = 0; i < images.length; i++) {
-                const imageUri = images[i];
-                const imageName = imageUri.url.split('/').pop();
-                const imageType = `image/${imageName?.split('.').pop()}`;
-                formData.append('images', {
-                  uri: imageUri,
-                  name: imageName,
-                  type: imageType,
-                } as any);
-              }
+              formData.append('coverImage', coverImage); // Base64 string
+            
+              // Append each image and its timestamp
+              images.forEach((image, index) => {
+                formData.append(`images[${index}]`, image.uri); 
+                console.log('image',image.uri.substring(0, 100));// Base64 string
+                formData.append(`timestamps[${index}]`, image.timestamp.type || new Date().toISOString());
+              });
   
       const response = await fetch(`http://recollekt.local:3000/edit-album`, {
         method: 'PUT', // Use PUT for updating resources
         headers: {
-          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`, // Include the token for authentication
         },
         body: formData,
       });
-  
+
+      console.log('Response:', response); // Log the response for debugging
+      const data = await response.json();
       if (response.ok) {
         Alert.alert('Success', 'Album updated successfully!');
         navigation.navigate('Albums/ViewAlbum', {
-            _id: route.params._id,
-            title,
-            coverImage,
-            images: images.map(image => ({
-              data: Buffer.from(image.url, 'base64'),
-              contentType: 'image/jpeg', // Adjust content type as needed
-              timestamp: { type: new Date(image.timestamp), required: true },
+            _id: data.album.id,
+            title: data.album.title,
+            coverImage: data.album.coverImage,
+            images: data.album.images.map((image: { url: string; timestamp: {type: string; required: true} }) => ({
+              uri: image.url,
+              timestamp: {type: image.timestamp, required: true}, // Assuming timestamp is already in the correct format
             })),
           }); // Navigate back to the previous screen
       } else {
@@ -148,17 +177,36 @@ export default function EditAlbum() {
     navigation.goBack(); // Navigate back to the previous screen without saving
   };
 
-  const renderImage = ({ item }: { item: { url: string; timestamp: string } }) => (
+  const renderImage = ({ item, index }: { item: { uri: string; timestamp: any }; index: number }) => {
+    console.log('timestamps:', images[index].timestamp);
+    const imageUrl = item.uri; // Remove the prefix for the URI
+    console.log('Image URL:', imageUrl.substring(0, 100)); // Log the image URL for debugging
+    console.log(item.timestamp);
+    let timestampString = '';
+    if (typeof item.timestamp === 'object' && item.timestamp.required) {
+      timestampString = Object.values(item.timestamp).join(''); // Join the values to form the string
+    } else if (typeof item.timestamp === 'string') {
+      timestampString = item.timestamp; // Use the string directly if it's valid
+    }
+    console.log('timestampString:', timestampString);
+    timestampString = timestampString.replace('true', '');
+    console.log('Formatted timestampString:', timestampString); // Format the timestamp string
+    
+
+    const readableDate = new Date(timestampString).toLocaleString(); 
+    
+    return (
+
     <View style={styles.imageContainer}>
-      <Image source={{ uri: item.url }} style={styles.albumImage} />
+      <Image source={{ uri: item.uri }} style={styles.albumImage} />
       <Text style={styles.timestampText}>
-        Taken on: {new Date(item.timestamp).toLocaleString()}
+        Taken on: {readableDate}
       </Text>
-      <TouchableOpacity onPress={() => handleDeleteImage(item.url)} style={styles.deleteButton}>
+      <TouchableOpacity onPress={() => handleDeleteImage(item.uri)} style={styles.deleteButton}>
         <Text style={styles.deleteButtonText}>Delete</Text>
       </TouchableOpacity>
     </View>
-  );
+  )};
 
   return (
     <View style={styles.container}>
@@ -176,7 +224,7 @@ export default function EditAlbum() {
       <Text style={styles.label}>Cover Image</Text>
       <TouchableOpacity onPress={handlePickCoverImage}>
         {coverImage ? (
-          <Image source={{ uri: `data:${coverImage.contentType};base64,${coverImage.data.toString('base64')}` }} style={styles.coverImage} />
+          <Image source={{ uri: coverImage }} style={styles.coverImage} />
         ) : (
           <View style={styles.coverPlaceholder}>
             <Text style={styles.coverPlaceholderText}>Pick a Cover Image</Text>
@@ -187,7 +235,7 @@ export default function EditAlbum() {
       {/* Album Images */}
       <Text style={styles.label}>Album Images</Text>
       <FlatList
-        data={images}
+        data={images.map(image => ({ uri: image.uri, timestamp: image.timestamp }))}
         keyExtractor={(item, index) => index.toString()}
         renderItem={renderImage}
         contentContainerStyle={styles.imageList}

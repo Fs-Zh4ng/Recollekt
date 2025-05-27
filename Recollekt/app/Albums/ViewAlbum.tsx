@@ -49,6 +49,30 @@ export default function ViewAlbum() {
     }))
   );
 
+
+  const changeImage = async (uri: string) => {
+    const res = await fetch(`http://recollekt.local:3000/images?url=${uri}`, {
+      method: 'GET',
+    });
+    const data = await res.json();
+    return data.image.replace('dataimage/jpegbase64', '');
+  };
+
+    useFocusEffect(() => {
+      (async () => {
+        for (const image of images) {
+          const img = await changeImage(image.uri);
+          setImages((prevImages) =>
+            prevImages.map((imgItem) =>
+              imgItem.uri === image.uri ? { ...imgItem, uri: img } : imgItem
+            )
+          );
+        }
+        setCoverImage(await changeImage(initialCoverImage));
+      })();
+    });
+  
+
   const [isModalVisible, setModalVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -56,7 +80,6 @@ export default function ViewAlbum() {
     setCurrentImageIndex(index);
     setModalVisible(true);
   };
-
   const saveImageToCameraRoll = async (uri: string) => {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -65,9 +88,23 @@ export default function ViewAlbum() {
         return;
       }
   
-      const asset = await MediaLibrary.createAssetAsync(uri);
-      await MediaLibrary.createAlbumAsync('Saved Photos', asset, false);
-      Alert.alert('Success', 'Image saved to camera roll!');
+      if (uri.startsWith('data:image')) {
+        // Handle Base64 URI
+        const fileExtension = uri.split(';')[0].split('/')[1]; // Extract file extension (e.g., 'jpeg', 'png')
+        const filePath = `${FileSystem.cacheDirectory}image.${fileExtension}`;
+        await FileSystem.writeAsStringAsync(filePath, uri.split(',')[1], { encoding: FileSystem.EncodingType.Base64 });
+  
+        console.log('Saved Base64 image to local file:', filePath);
+  
+        const asset = await MediaLibrary.createAssetAsync(filePath);
+        await MediaLibrary.createAlbumAsync('Saved Photos', asset, false);
+        Alert.alert('Success', 'Image saved to camera roll!');
+      } else {
+        // Handle regular URI
+        const asset = await MediaLibrary.createAssetAsync(uri);
+        await MediaLibrary.createAlbumAsync('Saved Photos', asset, false);
+        Alert.alert('Success', 'Image saved to camera roll!');
+      }
     } catch (error) {
       console.error('Error saving image:', error);
       Alert.alert('Error', 'Failed to save image.');
@@ -195,7 +232,7 @@ export default function ViewAlbum() {
               const newImgJson = await newImg.json();
               console.log('Image:', newImgJson.image.substring(0,100)); // Log the image for debugging
               temp.push({
-                uri: newImgJson.image,
+                uri: newImgJson.image.replace('dataimage/jpegbase64', ''),
                 timestamp: updatedAlbum.images[i].timestamp,
               });
             }
@@ -212,7 +249,7 @@ export default function ViewAlbum() {
 
   const renderImage = ({ item, index }: { item: { uri: string; timestamp: any }; index: number }) => {
     console.log('timestamps:', images[index].timestamp);
-    const imageUrl = item.uri.replace('dataimage/jpegbase64', '');
+    const imageUrl = item.uri; // Remove the prefix for the URI
     console.log('Image URL:', imageUrl.substring(0, 100)); // Log the image URL for debugging
     console.log(item.timestamp);
     let timestampString = '';
@@ -296,8 +333,7 @@ export default function ViewAlbum() {
               offset: Dimensions.get('window').width * index,
               index,
             })}
-            renderItem={({ item }) => {
-              console.log('Image URL:', item.uri); // Debugging log
+            renderItem={({ item }) => { // Debugging log
               return (
                 <Image
                   source={{ uri: item.uri }}

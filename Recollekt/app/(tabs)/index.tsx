@@ -27,10 +27,9 @@ export default function HomeScreen() {
           // Fetch shared albums
           const token = await AsyncStorage.getItem('token');
           if (!token) {
-            console.error('No token found');
             return;
           }
-  
+          
           const sharedResponse = await fetch(`http://recollekt.local:3000/albums/shared`, {
             method: 'GET',
             headers: {
@@ -39,14 +38,12 @@ export default function HomeScreen() {
           });
   
           if (sharedResponse.ok) {
-            const sharedAlbumsData = await sharedResponse.json();
-            console.log("Raw Shared Albums Response:", sharedAlbumsData); // Extract the shared albums array
+            const sharedAlbumsData = await sharedResponse.json(); // Extract the shared albums array
             setSharedAlbums(sharedAlbumsData.sharedAlbums);
           } else {
             console.error('Failed to fetch shared albums');
             setSharedAlbums([]); // Set to empty array if fetch fails
           }
-          console.log("SHARED ALBUMS", sharedAlbums);
   
           // Fetch user albums
           const albumsResponse = await fetch(`http://recollekt.local:3000/albums`, {
@@ -59,7 +56,6 @@ export default function HomeScreen() {
           if (albumsResponse.ok) {
             const albumsData = await albumsResponse.json(); // Extract the albums array
             setAlbums(albumsData.albums);
-            console.log("ALBUMS", albums);
             setLoading(false); // Set loading to false after fetching data
           } else {
             console.error('Failed to fetch albums');
@@ -84,55 +80,66 @@ export default function HomeScreen() {
     navigation.navigate('Create' as never); // Navigate to the CreateAlbum screen
   };
 
-  const handleViewAlbum = (albumId: string, title: string, coverImage: string, images: { url: string; timestamp: {type: string; required: true} }[]) => {
-    console.log('View Album button pressed');
-    console.log('Album ID:', albumId);
-    console.log('Title:', title);
-    console.log('Cover Image:', coverImage);
-    console.log('Images:', images);
+  useEffect(() => {
+    console.log('Loading state changed:', loading);
+  }, [loading]);
 
-    navigation.navigate('Albums/ViewAlbum', {
-      _id: albumId,
-      title,
-      coverImage,
-      images: images.map(image => ({
-        uri: image.url, // Assuming image.uri is a string
-        timestamp: image.timestamp // Assuming image.timestamp is a Date object
-      })),
-    });
+  const handleViewAlbum = async (albumId: string, title: string, coverImage: string, images: { url: string; timestamp: {type: string; required: true} }[]) => {
+
+    setLoading(true);
+    console.log(loading); // Set loading to true before navigating
+
+    try {
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      navigation.navigate('Albums/ViewAlbum', {
+        _id: albumId,
+        title,
+        coverImage,
+        images: images.map(image => ({
+          uri: image.url, // Assuming image.uri is a string
+          timestamp: image.timestamp // Assuming image.timestamp is a Date object
+        })),
+      });
+    } catch (error) {
+      console.error('Error navigating to ViewAlbum:', error);
+      Alert.alert('Error', 'An error occurred while navigating to the album');
+    }
+    setLoading(false); // Set loading to false after navigating
+
   };
 
 
   
-  const renderAlbum = ({ item }: { item: any }) => {
-// Log the Base64 string
+const renderAlbum = ({ item }: { item: any }) => {
   
-    const imageUri = item.coverImage.replace('dataimage/jpegbase64', ''); // Remove the prefix for the URI
-    console.log('Cover Image Base64 (truncated):', imageUri.substring(0, 100));
+  // Log the Base64 string
+  let imageUri = item.coverImage.replace('dataimage/jpegbase64', ''); // Remove the prefix for the URI
 
-  
-    return (
-      <TouchableOpacity
-        style={styles.albumContainer}
-        onPress={() => {
-          handleViewAlbum(item._id, item.title, imageUri, item.images); // Pass the full URI to the function
-        }}
-      >
-        <Image
-          source={{ uri: imageUri }} // Use the full URI
-          style={styles.albumCover}
-        />
-        <Text style={styles.albumTitle}>{item.title}</Text>
-      </TouchableOpacity>
-    );
-  };
+  console.log('Cover Image Base64 (truncated):', imageUri.substring(0, 100));
+
+  return (
+    <TouchableOpacity
+      style={styles.albumContainer}
+      onPress={() => {
+        handleViewAlbum(item._id, item.title, imageUri, item.images); // Pass the full URI to the function
+      }}
+    >
+      <Image
+        source={{ uri: imageUri }} // Use the full URI
+        style={styles.albumCover}
+      />
+      <Text style={styles.albumTitle}>{item.title}</Text>
+    </TouchableOpacity>
+  );
+};
 
   if (loading) {
     // Show loading indicator while fetching
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading albums...</Text>
+        <Text>Loading...</Text>
       </View>
     );
   }
@@ -154,6 +161,12 @@ export default function HomeScreen() {
       <TouchableOpacity style={styles.createButton} onPress={handleCreate}>
         <Text style={styles.plusSign}>+</Text>
       </TouchableOpacity>
+
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#ffffff" />
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -212,6 +225,12 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },

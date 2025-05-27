@@ -11,7 +11,7 @@ const albumSchema = new mongoose.Schema({
     },
   ],
   creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-});
+}, {versionKey: false});
 
 const Album = mongoose.model('Album', albumSchema);
 
