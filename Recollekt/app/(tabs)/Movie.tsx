@@ -47,6 +47,10 @@ const Movie = () => {
   const [editedVideoUrl, setEditedVideoUrl] = useState<string | null>(null);
   const [localVideoUri, setLocalVideoUri] = useState<string | null>(null);
   const [videoDuration, setVideoDuration] = useState(0); // Duration of the video
+  const [edited2, setEdited2] = useState<string | null>(null);
+  const [audioName, setAudioName] = useState<string | null>(null); // State to store the audio file name
+
+
 
 
   const handleTrimStartChange = (value: number) => {
@@ -104,8 +108,26 @@ const Movie = () => {
     fetchData();
   }, []);
 
+  const pickAudioFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+      });
+  
+      if (result.assets && result.assets.length > 0) {
+        setAudioUri(result.assets[0].uri);
+        setAudioName(result.assets[0].name); // Store the audio file name
+        Alert.alert('Audio Selected', result.assets[0].name);
+      }
+    } catch (error) {
+      console.error('Error picking audio:', error);
+      Alert.alert('Error', 'Failed to pick audio file.');
+    }
+  };
+
   const handleTrim = async () => {
-    if (!localVideoUri || trimEnd <= trimStart) {
+
+    if (trimEnd <= trimStart) {
       Alert.alert('Invalid Trim', 'Ensure the trim start and end values are correct.');
       return;
     }
@@ -119,12 +141,14 @@ const Movie = () => {
       }
   
       const formData = new FormData();
-      const videoBlob = await (await fetch(localVideoUri)).blob();
-      formData.append('video', localVideoUri);
+      if (videoUrl) {
+        formData.append('video', videoUrl);
+      } else {
+        throw new Error('Video URL is null');
+      }
       formData.append('start', String(trimStart));
       formData.append('end', String(trimEnd));
       console.log(formData);
-      console.log(localVideoUri);
   
       const response = await fetch('http://recollekt.local:3000/trim-video', {
         method: 'POST',
@@ -142,6 +166,8 @@ const Movie = () => {
       const data = await response.json();
       const trimmedVideoUri = `file:///Users/Ferdinand/NoName/Recollekt${data.trimmedVideoUrl}`;
       setEditedVideoUrl(trimmedVideoUri);
+      setEdited2(data.videoUrl);
+      console.log('Trimmed Video URL:', data.videoUrl);
       console.log('Trimmed Video URL:', trimmedVideoUri);
       Alert.alert('Success', 'Video trimmed successfully!');
     } catch (error) {
@@ -168,6 +194,57 @@ const Movie = () => {
     }
 
     setSelectedAlbums((prev) => [...prev, albumToAdd]);
+  };
+
+  const applyAudioToGeneratedVideo = async () => {
+    if (!localVideoUri || !audioUri) {
+      Alert.alert('Missing Files', 'Please generate a video and select an audio file.');
+      return;
+    }
+  
+    try {
+      setIsLoading(true);
+      const token = await AsyncStorage.getItem('token');
+      const formData = new FormData();
+  
+      if (videoUrl) {
+        formData.append('video', videoUrl);
+      } else {
+        throw new Error('Video URL is null');
+      }
+  
+      formData.append('audio', {
+        uri: audioUri,
+        name: 'audio.mp3',
+        type: 'audio/mpeg', // Adjust the MIME type based on the file format
+      } as any);
+
+      console.log('FormData:', formData);
+  
+      const response = await fetch(`http://recollekt.local:3000/add-audio`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.error || 'Failed to add audio.');
+        return;
+      }
+  
+      const data = await response.json();
+      setLocalVideoUri(data.outputVideoPath);
+      setVideoUrl(data.videoUrl);
+      Alert.alert('Success', 'Audio added to video successfully!');
+    } catch (error) {
+      console.error('Error applying audio:', error);
+      Alert.alert('Error', 'Failed to apply audio to video.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const createVideo = async () => {
@@ -229,7 +306,17 @@ const Movie = () => {
   };
 
   const saveToPhotoAlbum = async () => {
-    if (!videoUrl) return;
+    let url ='';
+    if (edited2) {
+      url = edited2;
+    }
+    else if (videoUrl) {
+      url = videoUrl;
+    } else {
+      Alert.alert('No Video', 'Please create or select a video to save.');
+      return;
+    }
+
     try {
       setIsSaving(true);
       const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -239,7 +326,7 @@ const Movie = () => {
       }
 
       const tempUri = `${FileSystem.cacheDirectory}temp_video.mp4`;
-      const response = await FileSystem.downloadAsync(videoUrl, tempUri);
+      const response = await FileSystem.downloadAsync(url, tempUri);
 
       const permanentUri = `${FileSystem.documentDirectory}video.mp4`;
       await FileSystem.moveAsync({ from: response.uri, to: permanentUri });
@@ -280,13 +367,20 @@ setIsSaving(false);
   //   behavior={Platform.OS === 'ios' ? 'padding' : undefined}
   //   onLayout={(e) => console.log('ScrollView layout:', e.nativeEvent.layout)}
   // >
+    
       <View style={styles.container}>
         {videoUrl ? (
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            >
+          
           <View style={styles.fullscreenVideoContainer}>
 
-            {editedVideoUrl ? (
+            {edited2 ? (
             <Video
-            source={{ uri: editedVideoUrl }}
+            source={{ uri: edited2 }}
             style={styles.fullscreenVideo}
             useNativeControls
             resizeMode={ResizeMode.CONTAIN}
@@ -301,6 +395,7 @@ setIsSaving(false);
             />
             )
             }
+            <Text style={styles.header}>Trim Video (Every image is 5 seconds long)</Text>
 
 <Text style={styles.label}>Trim Start: {trimStart}s</Text>
       <Slider
@@ -329,11 +424,25 @@ setIsSaving(false);
       />
 
       <TouchableOpacity
-        style={styles.trimButton}
+        style={[styles.trimButton, {marginBottom: 20}]}
         onPress={handleTrim}
       >
         <Text style={styles.trimButtonText}>Trim Video</Text>
       </TouchableOpacity>
+
+      <Text style={styles.header}>Add Audio to Video</Text>
+
+      <TouchableOpacity style={styles.audioButton} onPress={pickAudioFile}>
+  <Text style={styles.audioButtonText}>
+    Pick Audio
+  </Text>
+</TouchableOpacity>
+{audioName && <Text>Selected Audio: {audioName}</Text>}
+<TouchableOpacity style={styles.audioButton} onPress={applyAudioToGeneratedVideo}>
+  <Text style={styles.audioButtonText}>
+    Add Audio to Video
+  </Text>
+</TouchableOpacity>
             {isSaving ? (
               <ActivityIndicator size="large" color="#fff" />
             ) : (
@@ -341,10 +450,11 @@ setIsSaving(false);
                 <Text style={styles.saveButtonText}>Save to Camera Roll</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.backButton} onPress={() => { setVideoUrl(null); setEditedVideoUrl(null); }}>
+            <TouchableOpacity style={styles.backButton} onPress={() => { setVideoUrl(null); setEditedVideoUrl(null); setEdited2(null); setSelectedAlbums([]); setTrimEnd(0); setTrimStart(0); setLocalVideoUri(null); }}>
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
           </View>
+          </ScrollView>
         ) : (
           <View>
             <View style={styles.card}>
@@ -444,12 +554,10 @@ const styles = StyleSheet.create({
   fullscreenVideoContainer: {
     flex: 1,
     backgroundColor: '#fff',
-    justifyContent: 'center',
     alignItems: 'center',
     paddingBottom: 30,
-    paddingTop: 30,
   },
-  fullscreenVideo: { width: '100%', height: '40%', backgroundColor: 'black' },
+  fullscreenVideo: { width: '100%', height: '40%', backgroundColor: 'black', marginBottom: 20 },
   saveButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 12,

@@ -24,6 +24,7 @@ const upload = multer({
   },
 });
 const { Buffer } = require('buffer');
+const { Readable } = require('stream');
 const AWS = require('aws-sdk');
 const {getSignedUrl} = require('@aws-sdk/s3-request-presigner');
 const axios = require('axios');
@@ -64,6 +65,7 @@ app.use(bodyParser.json({limit: '100mb'}));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));
+app.use('/trimmed', express.static(path.join(__dirname, 'trimmed')));
 
 const editVideoRouter = require('/Users/Ferdinand/NoName/Recollekt/editVideo');
 app.use('/api', editVideoRouter);
@@ -152,7 +154,8 @@ const getBase64FromS3 = async (bucketName, key) => {
 };
 
 app.post('/trim-video', up2.none(), (req, res) => {
-  const { video, start, end } = req.body;
+  const video = req.body.video.replace('http://recollekt.local:3000/videos/', '/Users/Ferdinand/NoName/Recollekt/output/'); // Assuming video is a base64 string or a URL
+  const { start, end } = req.body;
   console.log('Received startTime:', start, 'endTime:', end); // Debugging log
   console.log(req.body);
   
@@ -164,7 +167,8 @@ app.post('/trim-video', up2.none(), (req, res) => {
     .setDuration(end - start)
     .output(outputPath)
     .on('end', () => {
-      res.json({ trimmedVideoUrl: `/trimmed/${outputFileName}` });
+      const videoUrl = `http://recollekt.local:${PORT}/trimmed/${path.basename(outputPath)}`;
+      res.json({ trimmedVideoUrl: `/trimmed/${path.basename(outputPath)}`, videoUrl });
     })
     .on('error', (err) => {
       console.error('FFmpeg error:', err);
@@ -219,6 +223,53 @@ app.get('/user/profile', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch user profile' });
   }
 });
+
+app.post('/add-audio', upload.single('audio'), async (req, res) => {
+  try {
+    let videoPath = req.body.video;
+    if (videoPath.startsWith('http://recollekt.local:3000/videos/')) {
+      videoPath = videoPath.replace('http://recollekt.local:3000/videos/', '/Users/Ferdinand/NoName/Recollekt/output/'); // Adjust the path as needed
+    } else if (videoPath.startsWith('http://recollekt.local:3000/trimmed/')) {
+      videoPath = videoPath.replace('http://recollekt.local:3000/trimmed/', '/Users/Ferdinand/NoName/Recollekt/trimmed/'); // Adjust the path as needed
+    }
+
+
+    console.log('Received video:', videoPath); // Debugging log
+    const audioBuffer = req.file.buffer;
+    console.log('Received audio file:', audioBuffer); // Debugging log
+
+    const audioStream = new Readable();
+    audioStream.push(audioBuffer);
+    audioStream.push(null);
+
+    const outputPath = path.join(__dirname, 'output', `merged_${Date.now()}.mp4`);
+    const videoUrl = `http://recollekt.local:${PORT}/videos/${path.basename(outputPath)}`;
+
+    
+
+    // Merge audio and video using ffmpeg
+    ffmpeg()
+      .input(videoPath)
+      .input(audioStream)
+      .outputOptions('-c:v copy') // Copy video codec to avoid re-encoding
+      .outputOptions('-c:a aac') // Encode audio to AAC format
+      .outputOptions('-shortest')
+      .save(outputPath)
+      .on('end', () => {
+        console.log('Merging completed:', outputPath);
+        res.status(200).json({ videoUrl });
+      })
+      .on('error', (err) => {
+        console.error('Error during merging:', err);
+        res.status(500).json({ error: 'Failed to merge audio and video' });
+      });
+
+  } catch (err) {
+    console.error('Server error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 app.put('/user/profile-picture', upload.none(), async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -511,18 +562,17 @@ const createVideoFromImages = (images, outputPath) => {
 
     // Assuming images are named as image_1.jpg, image_2.jpg, etc.
     command.input(path.join(path.dirname(images[0]), 'image_%d.jpg'))
-      .inputOptions(['-framerate 1']) // Show each image for 1 second
+      .inputOptions(['-framerate 1/5']) // Show each image for 5 seconds
 
       // Add a silent audio track to prevent iOS compatibility issues
       .input('silence.m4a')
 
       .outputOptions([
-        '-c:v libx264',       // H.264 codec
-        '-pix_fmt yuv420p',   // iOS-compatible pixel format
-        '-c:a aac',           // AAC audio codec (iOS requirement)
-        '-shortest',          // Match audio duration to video
-        '-movflags +faststart', // iOS-friendly metadata layout
-        '-r 30',              // Output at 30 FPS
+      '-c:v libx264',       // H.264 codec
+      '-pix_fmt yuv420p',   // iOS-compatible pixel format
+      '-c:a aac',           // AAC audio codec (iOS requirement)        // Match audio duration to video
+      '-movflags +faststart', // iOS-friendly metadata layout
+      '-r 30',              // Output at 30 FPS
       ])
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
