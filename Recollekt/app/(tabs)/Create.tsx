@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserContext, UserContextType } from '../UserContext';
 import { jwtDecode } from 'jwt-decode';
 import { useNavigation } from 'expo-router';
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import { getLocalIPAddress } from '../utils/network';
 import * as MediaLibrary from 'expo-media-library';
 
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Image, FlatList, StyleSheet, TouchableOpacity, Alert, Button } from 'react-native';
+import { View, Text, TextInput, Image, FlatList, StyleSheet, TouchableOpacity, Alert, Button, ActivityIndicator } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { RootStackParamList } from '../(tabs)/types'; // Adjust the path as necessary
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import { getLocalIPAddress } from '../utils/network';
 import { useFocusEffect } from 'expo-router';
 
 
@@ -20,6 +20,7 @@ const convertToISO8601 = (input: string): string => {
   const [datePart, timePart] = input.split(' ');
   const [year, month, day] = datePart.split(':');
 
+
   // Construct a valid ISO string
   const isoString = new Date(`${year}-${month}-${day}T${timePart}Z`).toISOString();
 
@@ -29,7 +30,7 @@ const convertToISO8601 = (input: string): string => {
 
 export default function EditAlbum() {
 
-
+  const [isLoading, setIsLoading] = useState(false);
   const route = useRoute<EditAlbumRouteProp>();
   const navigation = useNavigation<NavigationProp>();
   const { _id, title: initialTitle, coverImage: initialCoverImage, images: initialImages } = route.params;
@@ -54,6 +55,7 @@ export default function EditAlbum() {
 
   useFocusEffect(() => {
     (async () => {
+      console.log(_id)
       for (const image of images) {
         const img = await changeImage(image.uri);
         setImages((prevImages) =>
@@ -118,8 +120,11 @@ export default function EditAlbum() {
       Alert.alert('Error', 'Please enter an album title and select a cover image');
       return;
     }
-  
+    
+    setIsLoading(true); // Set loading state to true
     try {
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
         const token = await AsyncStorage.getItem('token');
         if (!token) {
           Alert.alert('Error', 'Authentication token is missing. Please log in again.');
@@ -157,24 +162,34 @@ export default function EditAlbum() {
         navigation.navigate('Albums/ViewAlbum', {
             _id: data.album.id,
             title: data.album.title,
-            coverImage: data.album.coverImage,
-            images: data.album.images.map((image: { url: string; timestamp: {type: string; required: true} }) => ({
+            coverImage: data.base64CI,
+            images: data.images.map((image: { url: string; timestamp: {type: string; required: true} }) => ({
               uri: image.url,
               timestamp: {type: image.timestamp, required: true}, // Assuming timestamp is already in the correct format
             })),
           }); // Navigate back to the previous screen
       } else {
-        const errorData = await response.json();
+        const errorData = data;
         Alert.alert('Error', errorData.error || 'Failed to update album');
       }
     } catch (error) {
       console.error('Error updating album:', error);
       Alert.alert('Error', 'Something went wrong. Please try again later.');
     }
+    setIsLoading(false); // Set loading state to false after the operation
   };
 
-  const handleCancel = () => {
-    navigation.goBack(); // Navigate back to the previous screen without saving
+  const handleCancel = async() => {
+    setIsLoading(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error navigating back:', error);
+      Alert.alert('Error', 'An error occurred while navigating back');
+    }
+    setIsLoading(false); // Set loading state to false after the operation
+ // Navigate back to the previous screen without saving
   };
 
   const renderImage = ({ item, index }: { item: { uri: string; timestamp: any }; index: number }) => {
@@ -249,6 +264,11 @@ export default function EditAlbum() {
         <Button title="Save" onPress={handleSave} />
         <Button title="Cancel" onPress={handleCancel} color="red" />
       </View>
+                  { isLoading && (
+                    <View style={styles.loadingOverlay}>
+                      <ActivityIndicator size="large" color="#ffffff" />
+                    </View>
+                  )}
     </View>
   );
 }
@@ -336,5 +356,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 5,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -14,6 +14,8 @@ export default function HomeScreen() {
   const [albums, setAlbums] = useState([]);
   const [sharedAlbums, setSharedAlbums] = useState([]);// State to hold shared albums
   const [loading, setLoading] = useState<boolean>(true); // Loading state
+  const [images, setImages] = useState<{ uri: string; timestamp: { type: string; required: true } }[]>([]); // State to hold images
+  const [coverImage, setCoverImage] = useState<string>(''); // State to hold cover image
 
 
 
@@ -57,12 +59,12 @@ export default function HomeScreen() {
             const albumsData = await albumsResponse.json(); // Extract the albums array
             setAlbums(albumsData.albums);
             setLoading(false); // Set loading to false after fetching data
+
           } else {
             console.error('Failed to fetch albums');
             setAlbums([]); // Set to empty array if fetch fails
             setLoading(false); // Set loading to false even if fetch fails
           }
- // Combine albums and shared albums
         } catch (error) {
           console.error('Error fetching data:', error);
         }
@@ -70,6 +72,8 @@ export default function HomeScreen() {
       };
   
       fetchData();
+
+
     }, [])
   );
 
@@ -83,6 +87,8 @@ export default function HomeScreen() {
   useEffect(() => {
     console.log('Loading state changed:', loading);
   }, [loading]);
+
+  
 
   const handleViewAlbum = async (albumId: string, title: string, coverImage: string, images: { url: string; timestamp: {type: string; required: true} }[]) => {
 

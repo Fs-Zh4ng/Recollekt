@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import {
   useRoute,
@@ -22,8 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import ImageModal from 'react-native-image-modal';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
-import * as Permissions from 'expo-permissions';
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+
 
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Albums/ViewAlbum'>;
@@ -42,6 +42,8 @@ export default function ViewAlbum() {
   const [title, setTitle] = useState(initialTitle);
   const [coverImage, setCoverImage] = useState(initialCoverImage);
 
+  const [isLoading, setIsLoading] = useState(false);
+
   const [images, setImages] = useState<{ uri: string; timestamp: { type: string; required: true }; }[]>(
     initialImages.map(image => ({
       ...image,
@@ -50,28 +52,23 @@ export default function ViewAlbum() {
   );
 
 
-  const changeImage = async (uri: string) => {
-    const res = await fetch(`http://recollekt.local:3000/images?url=${uri}`, {
-      method: 'GET',
-    });
-    const data = await res.json();
-    return data.image.replace('dataimage/jpegbase64', '');
-  };
 
-    useFocusEffect(() => {
-      (async () => {
-        for (const image of images) {
-          const img = await changeImage(image.uri);
-          setImages((prevImages) =>
-            prevImages.map((imgItem) =>
-              imgItem.uri === image.uri ? { ...imgItem, uri: img } : imgItem
-            )
-          );
-        }
-        setCoverImage(await changeImage(initialCoverImage));
-      })();
-    });
-  
+  const getImages = async (url: string) => {
+    try {
+      const response = await fetch(`http://recollekt.local:3000/images?url=${url}`, {
+        method: 'GET',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch images');
+      }
+      const data = await response.json();
+      return data.image
+    } catch (error) {
+      console.error('Error fetching images:', error);
+      Alert.alert('Error', 'Failed to fetch images.');
+      return '';
+    }
+  }
 
   const [isModalVisible, setModalVisible] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -157,8 +154,18 @@ export default function ViewAlbum() {
     navi2.navigate('(tabs)' as never);
   };
 
-  const handleEdit = () => {
-    navigation.navigate('Albums/EditAlbum', route.params);
+  const handleEdit = async() => {
+    setIsLoading(true);
+    console.log(isLoading); // Set loading to true before navigating
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      navigation.navigate('Albums/EditAlbum', route.params);
+    } catch (error) {
+      console.error('Error navigating to EditAlbum:', error);
+      Alert.alert('Error', 'An error occurred while navigating to the edit album screen');
+    }
+    setIsLoading(false);
   };
 
   const handleDelete = async () => {
@@ -188,12 +195,6 @@ export default function ViewAlbum() {
       Alert.alert('Error', 'An error occurred while deleting the album');
     }
   };
-  const checkFileExists = async (uri: string) => {
-    const fileInfo = await FileSystem.getInfoAsync(uri);
-    console.log(fileInfo);
-    return fileInfo.exists;
-  };
-
   useFocusEffect(
     React.useCallback(() => {
       const fetchUpdatedAlbum = async () => {
@@ -211,32 +212,25 @@ export default function ViewAlbum() {
             },
           });
 
-          console.log('Response:', response); // Log the response for debugging
-
           if (response.ok) {
             const data = await response.json(); // Log the data for debugging
             const updatedAlbum = data.album; // Log the updated album for debugging
             setTitle(updatedAlbum.title);
-            setCoverImage(updatedAlbum.coverImage.replace('dataimage/jpegbase64', ''));
-            console.log('Updated Album:', updatedAlbum.images.length); // Log the updated album for debugging
-            const temp = [];
+            setCoverImage(updatedAlbum.coverImage.replace('dataimage/jpegbase64', ''));// Log the updated album for debugging
+            const formData = new FormData();
             for (let i = 0; i < updatedAlbum.images.length; i++) {
-              const image = updatedAlbum.images[i].url;
-              console.log('Image URL:', image); // Log the image URL for debugging
-              const newImg = await fetch(`http://recollekt.local:3000/images?url=${image}`, {
-                method: 'GET',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              });
-              const newImgJson = await newImg.json();
-              console.log('Image:', newImgJson.image.substring(0,100)); // Log the image for debugging
-              temp.push({
-                uri: newImgJson.image.replace('dataimage/jpegbase64', ''),
-                timestamp: updatedAlbum.images[i].timestamp,
-              });
-            }
-            setImages(temp);
+              formData.append(`images[${i}][url]`, updatedAlbum.images[i].url); // Append image URL
+              formData.append(`images[${i}][timestamp]`, updatedAlbum.images[i].timestamp);
+            } // Log the form data for debugging
+            const res = await fetch('http://recollekt.local:3000/imges', {
+              method: 'POST',
+              body: formData,
+            });
+            const imagesData = await res.json();
+            setImages(imagesData.images.map((image: { url: string; timestamp: any }) => ({
+              uri: image.url.replace('dataimage/jpegbase64', ''), // Remove the prefix for the URI
+              timestamp: image.timestamp,
+            })));
           }
         } catch (error) {
           console.error('Error fetching updated album:', error);
@@ -249,7 +243,7 @@ export default function ViewAlbum() {
 
   const renderImage = ({ item, index }: { item: { uri: string; timestamp: any }; index: number }) => {
     console.log('timestamps:', images[index].timestamp);
-    const imageUrl = item.uri; // Remove the prefix for the URI
+    let imageUrl =item.uri;// Remove the prefix for the URI
     console.log('Image URL:', imageUrl.substring(0, 100)); // Log the image URL for debugging
     console.log(item.timestamp);
     let timestampString = '';
@@ -261,6 +255,7 @@ export default function ViewAlbum() {
     console.log('timestampString:', timestampString);
     timestampString = timestampString.replace('true', '');
     console.log('Formatted timestampString:', timestampString); // Format the timestamp string
+
     
 
     const readableDate = new Date(timestampString).toLocaleString(); 
@@ -354,6 +349,11 @@ export default function ViewAlbum() {
           </TouchableOpacity>
         </View>
       </Modal>
+            { isLoading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#ffffff" />
+              </View>
+            )}
     </View>
   );
 }
@@ -478,5 +478,11 @@ const styles = StyleSheet.create({
     bottom: 50,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

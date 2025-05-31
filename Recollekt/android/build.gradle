@@ -4,12 +4,22 @@ buildscript {
   repositories {
     google()
     mavenCentral()
+    maven { url "https://artifactory.img.ly/artifactory/imgly" }
   }
   dependencies {
     classpath('com.android.tools.build:gradle')
     classpath('com.facebook.react:react-native-gradle-plugin')
     classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+    classpath 'com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:1.8.0-1.0.9' // KSP version is depending on your Kotlin version.
+    classpath 'ly.img.android.sdk:plugin:10.9.0'
   }
+  ext {
+       buildToolsVersion = "34.0.0"
+       minSdkVersion = 21
+       compileSdkVersion = 34
+        targetSdkVersion = 34
+    }
 }
 
 def reactNativeAndroidDir = new File(
@@ -26,6 +36,7 @@ allprojects {
       // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
       url(reactNativeAndroidDir)
     }
+    maven { url 'https://artifactory.img.ly/artifactory/imgly' }
 
     google()
     mavenCentral()

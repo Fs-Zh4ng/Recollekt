@@ -6,7 +6,7 @@ import { AuthContext } from '../_layout'; // Adjust the path to your UserContext
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import { getLocalIPAddress } from '../utils/network';
 import Zeroconf from 'react-native-zeroconf';
 
 

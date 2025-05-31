@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContext } from '../_layout';
 import { useNavigation } from '@react-navigation/native';
 import { UserContext } from '../UserContext'; // Adjust the path to your UserContext file
-import { getLocalIPAddress } from '/Users/Ferdinand/NoName/Recollekt/utils/network';
+import { getLocalIPAddress } from '../utils/network';
 import Zeroconf from 'react-native-zeroconf';
 
 
@@ -102,9 +102,9 @@ export default function LoginScreen() {
           const profImage = await fetch(`http://recollekt.local:3000/images?url=${data.profileImage}`, {
             method: 'GET',
           });
-          console.log(profImage);
+          console.log('hi',profImage);
           const img1 = await profImage.json();
-          console.log(img1.image.substring(0, 100));
+          console.log('base 64', img1.image.substring(0, 100));
           img = img1.image.replace('dataimage/jpegbase64', ''); // Extract the image URL from the response
         }
         

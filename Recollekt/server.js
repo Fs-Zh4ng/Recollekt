@@ -16,6 +16,7 @@ const bonjour = require('bonjour')();
 const multer = require('multer');
 const storage = multer.memoryStorage();
 require('dotenv').config();
+const { fileTypeFromBuffer } = require('file-type');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -24,6 +25,10 @@ const upload = multer({
 });
 const { Buffer } = require('buffer');
 const AWS = require('aws-sdk');
+const {getSignedUrl} = require('@aws-sdk/s3-request-presigner');
+const axios = require('axios');
+const sharp = require('sharp');
+const up2 = multer({ dest:'uploads/' }); // Temporary storage for uploaded files
 
 // Set FFmpeg and FFprobe paths
 ffmpeg.setFfmpegPath('/opt/homebrew/bin/ffmpeg'); // Update this path as needed
@@ -41,10 +46,14 @@ const s3 = new S3Client({
   },
 });
 
+const bucketName = process.env.AWS_S3_BUCKET_NAME;
+
 const extractKeyFromUrl = (url) => {
   const urlObj = new URL(url);
   return urlObj.pathname.substring(1); // Remove the leading '/'
 };
+
+
 
 
 
@@ -53,6 +62,11 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.json({limit: '100mb'}));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
+
+app.use('/videos', express.static(path.join(__dirname, 'public/videos')));
+
+const editVideoRouter = require('/Users/Ferdinand/NoName/Recollekt/editVideo');
+app.use('/api', editVideoRouter);
 
 bonjour.publish({
   name: 'Recollekt Backend',
@@ -82,6 +96,24 @@ mongoose.connection.on('error', (err) => {
   console.error('Error connecting to MongoDB:', err);
 });
 
+async function getSignedUrlForImage(bucketName, key) {
+  const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+  return await getSignedUrl(s3, command, { expiresIn: 3600 }); // URL valid for 1 hour
+}
+
+
+async function fetchAndSaveBase64Image(bucketName, key, filePath) {
+  try {
+    const signedUrl = await getSignedUrlForImage(bucketName, key);
+    const response = await axios.get(signedUrl, { responseType: 'arraybuffer' });
+    const buffer = await sharp(response.data).rotate().toBuffer(); // Normalize orientation
+    fs.writeFileSync(filePath, buffer);
+    console.log(`Image saved to ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to fetch or save image from S3:`, error);
+    throw error;
+  }
+}
 
 const getBase64FromS3 = async (bucketName, key) => {
   const s3 = new S3Client({
@@ -118,6 +150,28 @@ const getBase64FromS3 = async (bucketName, key) => {
     throw error;
   }
 };
+
+app.post('/trim-video', up2.none(), (req, res) => {
+  const { video, start, end } = req.body;
+  console.log('Received startTime:', start, 'endTime:', end); // Debugging log
+  console.log(req.body);
+  
+  const outputFileName = `trimmed-${Date.now()}.mp4`;
+  const outputPath = path.join(__dirname, 'trimmed', outputFileName);
+
+  ffmpeg(video) // Assuming 'video' is a valid file path or URL
+    .setStartTime(start)
+    .setDuration(end - start)
+    .output(outputPath)
+    .on('end', () => {
+      res.json({ trimmedVideoUrl: `/trimmed/${outputFileName}` });
+    })
+    .on('error', (err) => {
+      console.error('FFmpeg error:', err);
+      res.status(500).json({ error: 'Failed to trim video' });
+    })
+    .run();
+});
 
 app.get('/friends/pending', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -238,6 +292,7 @@ app.post('/albums', upload.none(), async (req, res) => {
     console.log('Received title:', req.body.title); // Debugging log
     console.log('Received timestamps:', req.body.timestamps); // Debugging log
 
+
     // Helper function to upload Base64 image to S3
     const uploadToS3 = async (base64Image, fileName) => {
       const uniqueFileName = `${Date.now()}-${fileName}`;
@@ -296,21 +351,36 @@ app.post('/albums', upload.none(), async (req, res) => {
   }
 });
 
-app.post('/generate-video', async (req, res) => {
+app.post('/generate-video', upload.none(), async (req, res) => {
   try {
-    const { albums } = req.body;
+    const albums = JSON.parse(req.body.albums);
+    console.log('Received albums:', albums.length); // Debugging log 
 
     if (!albums || albums.length === 0) {
       return res.status(400).json({ error: 'No albums provided' });
     }
+    if (!albums || !Array.isArray(albums)) {
+      return res.status(400).json({ error: 'Invalid albums data' });
+    }
+
+    const images = [];
 
     // Flatten all image URLs from the albums
-    const imageUrls = albums.flatMap((album) => album.images);
-    console.log('Image URLs:', imageUrls); // Debugging log
+    for (const album of albums) {
+      if (!album.images || !Array.isArray(album.images)) {
+        console.error('Invalid album images:', album);
+        return res.status(400).json({ error: 'Invalid album images' });
+      }
 
-    if (imageUrls.length === 0) {
-      return res.status(400).json({ error: 'No images found in albums' });
+      for (const image of album.images) {
+        if (image.url) {
+          images.push(image.url);
+          console.log('Image URL:', image.url); // Debugging log
+        }
+      }
     }
+
+    console.log('Images to process:', images); // Debugging log
 
     // Create a temporary directory for downloaded images
     const tempDir = path.join(__dirname, 'temp');
@@ -320,25 +390,50 @@ app.post('/generate-video', async (req, res) => {
 
     // Download images to the temp directory
     const downloadedImages = [];
+    const normalizedImages = [];
     for (let i = 0; i < albums.length; i++) {
       const album = albums[i];
     
       // Add the cover image
       if (album.coverImage) {
-        const coverImagePath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
-        await downloadImage(album.coverImage, coverImagePath);
-        downloadedImages.push(coverImagePath);
+        const base64Data = album.coverImage.replace('data:image/jpeg;base64,dataimage/jpegbase64', ''); 
+        console.log('Base64 data (first 100 chars):', base64Data.substring(0, 100));
+        const tempcoverImagePath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
+        const buffer = Buffer.from(base64Data, 'base64');
+        console.log('Cover image buffer size:', buffer); // Debugging log // Debugging log
+
+        try {
+          const image = sharp(buffer);
+          console.log('image', image);
+          const metadata = await image.metadata(); // validate format
+          console.log('Detected format:', metadata.format);
+      
+          const normalized = await image.rotate().toBuffer();
+          const outputPath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
+          fs.writeFileSync(outputPath, normalized);
+          downloadedImages.push(outputPath);
+        } catch (err) {
+          console.error('❌ Failed to process cover image:', err.message);
+          return res.status(400).json({ error: 'Invalid cover image' });
+        }
       }
     
-      // Add album images
+      // Add other images in the album
       for (let j = 0; j < album.images.length; j++) {
-        const imageUrl = album.images[j];
-        const imagePath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
-        await downloadImage(imageUrl, imagePath);
-        downloadedImages.push(imagePath);
+        const tempimagePath = path.join(tempDir, `image_${downloadedImages.length}.jpg`);
+        const key = extractKeyFromUrl(album.images[j].url);
+        const data = getBase64FromS3(process.env.AWS_S3_BUCKET_NAME, key);
+        console.log('Image URL:', (await data).substring(0,100)); // Debugging log
+        const base64Data = (await data).replace('data:image/jpeg;base64,dataimage/jpegbase64', '');  // Remove the prefix
+        const shrp = await sharp(Buffer.from(base64Data, 'base64')).rotate().toBuffer(); // Normalize orientation
+        fs.writeFileSync(tempimagePath, shrp);
+        downloadedImages.push(tempimagePath);// Store the original temp path for cleanup
       }
+
     }
 
+    console.log('Downloaded images:', downloadedImages); // Debugging log
+    console.log('Normalized images:', normalizedImages); // Debugging log
     // Generate video from images
     const outputVideoPath = path.join(__dirname, 'output', `video_${Date.now()}.mp4`);
     if (!fs.existsSync(path.dirname(outputVideoPath))) {
@@ -356,14 +451,29 @@ app.post('/generate-video', async (req, res) => {
       }
     });
 
+    const duration = await getVideoDuration(outputVideoPath);
+
     // Respond with the video URL
     const videoUrl = `http://recollekt.local:${PORT}/videos/${path.basename(outputVideoPath)}`;
-    res.json({ videoUrl });
+    res.json({ videoUrl, outputVideoPath: outputVideoPath, duration });
   } catch (error) {
     console.error('Error generating video:', error);
     res.status(500).json({ error: 'Failed to generate video' });
   }
 });
+
+async function normalizeImageOrientation(inputPath, outputPath) {
+  try {
+    // Validate the image format
+    const outPut = await sharp(inputPath).rotate().metadata();
+    console.log('OUTPUT', outPut); // Debugging log
+    // Normalize orientation
+    console.log(`Normalized image saved to ${outPut}`);
+  } catch (error) {
+    console.error(`Failed to normalize image: ${inputPath}`, error);
+    throw error;
+  }
+}
 
 
 // Helper function to download an image
@@ -399,21 +509,51 @@ const createVideoFromImages = (images, outputPath) => {
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
 
-    // Use a frame pattern if images are named sequentially
+    // Assuming images are named as image_1.jpg, image_2.jpg, etc.
     command.input(path.join(path.dirname(images[0]), 'image_%d.jpg'))
-      .inputOptions('-framerate 1'); // Display each image for 1 second
+      .inputOptions(['-framerate 1']) // Show each image for 1 second
 
-    command
+      // Add a silent audio track to prevent iOS compatibility issues
+      .input('silence.m4a')
+
+      .outputOptions([
+        '-c:v libx264',       // H.264 codec
+        '-pix_fmt yuv420p',   // iOS-compatible pixel format
+        '-c:a aac',           // AAC audio codec (iOS requirement)
+        '-shortest',          // Match audio duration to video
+        '-movflags +faststart', // iOS-friendly metadata layout
+        '-r 30',              // Output at 30 FPS
+      ])
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
-      .outputOptions([
-        '-c:v libx264', // Use H.264 codec
-        '-r 30',        // Set frame rate to 30 FPS
-        '-pix_fmt yuv420p', // Set pixel format
-      ])
       .save(outputPath);
   });
 };
+const getVideoDuration = (filePath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) {
+        return reject(err);
+      }
+      const duration = metadata.format.duration; // Duration in seconds
+      resolve(duration);
+    });
+  });
+};
+
+function cleanupDirectory(directoryPath) {
+  fs.readdir(directoryPath, (err, files) => {
+    if (err) {
+      console.error(`Failed to read directory ${directoryPath}:`, err);
+      return;
+    }
+    for (const file of files) {
+      fs.unlink(path.join(directoryPath, file), (err) => {
+        if (err) console.error(`Failed to delete file ${file}:`, err);
+      });
+    }
+  });
+}
 // Serve generated videos
 app.use('/videos', express.static(path.join(__dirname, 'output')));
 
@@ -561,6 +701,7 @@ app.put('/edit-album', upload.none(), async (req, res) => {
     
     // Handle images and timestamps
     const imageUrls = [];
+    const b64IMGs = [];
     const imageArray = Array.isArray(images) ? images : [images]; // Handle single or multiple images
     const timestampArray = Array.isArray(timestamps) ? timestamps : [timestamps]; // Handle single or multiple timestamps
 
@@ -573,6 +714,10 @@ app.put('/edit-album', upload.none(), async (req, res) => {
         url: imageUrl,
         timestamp: timestampArray[index] || new Date(), // Use provided timestamp or fallback to current date
       });
+      b64IMGs.push({
+        url: image,
+        timestamp: timestampArray[index] || new Date(), // Use provided timestamp or fallback to current date
+      })
     }
 
     album.images = imageUrls; // Update images array
@@ -580,7 +725,9 @@ app.put('/edit-album', upload.none(), async (req, res) => {
 
     await album.save();
 
-    res.status(200).json({ message: 'Album updated successfully', album });
+
+
+    res.status(200).json({ message: 'Album updated successfully', album, base64CI: coverImage, images: b64IMGs });
   } catch (error) {
     console.error('Error updating album:', error);
     res.status(500).json({ error: 'Failed to update album' });
@@ -661,6 +808,7 @@ app.get('/albums/shared', async (req, res) => {
       const album = user.sharedAlbums[i];
       album.coverImage = await getBase64FromS3(process.env.AWS_S3_BUCKET_NAME, extractKeyFromUrl(album.coverImage));
     } // Debugging log
+
     res.status(200).json({ sharedAlbums: user.sharedAlbums });
   } catch (error) {
     console.error('Error fetching shared albums:', error);
@@ -766,6 +914,44 @@ app.get('/images', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch image' }); 
   }// Debugging log
 
+});
+
+app.delete('/albums/:id', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const album = await Album.findById(req.params.id);
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found' });
+    }// Replace with your JWT secret
+    await album.remove();
+    res.status(200).json({ message: 'Album deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting album:', error);
+    res.status(500).json({ error: 'Failed to delete album' });
+  }
+
+});
+
+app.post('/imges', upload.none(), async (req, res) => {
+  const images = req.body.images;
+  try {
+    for (i = 0; i < images.length; i++) {
+      const image = images[i].url;
+      console.log('Image URL:', image); // Debugging log
+      const key = extractKeyFromUrl(image);
+      console.log('Extracted key:', key); // Debugging log
+      const base64Image = await getBase64FromS3(process.env.AWS_S3_BUCKET_NAME, key);
+      console.log('Base64 image:', base64Image.substring(0, 100)); // Debugging log
+      images[i].url = base64Image;
+    }
+    res.status(200).json({ images });
+  } catch (error) {
+    console.error('Error fetching images:', error);
+    res.status(500).json({ error: 'Failed to fetch images' });
+  }
 });
 
  // Use multer's memory storage
