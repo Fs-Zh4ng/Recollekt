@@ -62,7 +62,7 @@ const Movie = () => {
 
   const handleTrimEndChange = (value: number) => {
     setTrimEnd(value);
-    if (value <= trimStart) {
+    if (value <= trimStart && value > 0) {
       setTrimStart(value - 1); // Ensure trimStart is always less than trimEnd
     }
   };
@@ -167,9 +167,12 @@ const Movie = () => {
       const trimmedVideoUri = `file:///Users/Ferdinand/NoName/Recollekt${data.trimmedVideoUrl}`;
       setEditedVideoUrl(trimmedVideoUri);
       setEdited2(data.videoUrl);
+      setVideoDuration(data.duration || 0); // Set video duration if available
       console.log('Trimmed Video URL:', data.videoUrl);
       console.log('Trimmed Video URL:', trimmedVideoUri);
       Alert.alert('Success', 'Video trimmed successfully!');
+      setTrimEnd(0);
+      setTrimStart(0);
     } catch (error) {
       console.error('Trim error:', error);
       Alert.alert('Trim Failed');
@@ -197,17 +200,15 @@ const Movie = () => {
   };
 
   const applyAudioToGeneratedVideo = async () => {
-    if (!localVideoUri || !audioUri) {
-      Alert.alert('Missing Files', 'Please generate a video and select an audio file.');
-      return;
-    }
   
     try {
       setIsLoading(true);
       const token = await AsyncStorage.getItem('token');
       const formData = new FormData();
   
-      if (videoUrl) {
+      if (edited2) {
+        formData.append('video', edited2);
+      } else if (videoUrl) {
         formData.append('video', videoUrl);
       } else {
         throw new Error('Video URL is null');
@@ -236,8 +237,8 @@ const Movie = () => {
       }
   
       const data = await response.json();
-      setLocalVideoUri(data.outputVideoPath);
-      setVideoUrl(data.videoUrl);
+      setEditedVideoUrl(data.outputVideoPath);
+      setEdited2(data.videoUrl);
       Alert.alert('Success', 'Audio added to video successfully!');
     } catch (error) {
       console.error('Error applying audio:', error);
@@ -304,6 +305,22 @@ const Movie = () => {
       setIsLoading(false);
     }
   };
+
+  const handleBack = () => {
+    const res = fetch('http://recollekt.local:3000/clear', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        console.log('Clear response:', data);
+      })
+      .catch((error) => {
+        console.error('Error clearing data:', error);
+      });
+  }
 
   const saveToPhotoAlbum = async () => {
     let url ='';
@@ -424,11 +441,17 @@ setIsSaving(false);
       />
 
       <TouchableOpacity
-        style={[styles.trimButton, {marginBottom: 20}]}
+        style={[styles.trimButton, {marginBottom: 20, width: '90%', alignItems: 'center', alignSelf: 'center'}]}
         onPress={handleTrim}
       >
-        <Text style={styles.trimButtonText}>Trim Video</Text>
+        {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.createButtonText}>Trim Video</Text>
+              )}
       </TouchableOpacity>
+
+      <View style={styles.card}>
 
       <Text style={styles.header}>Add Audio to Video</Text>
 
@@ -440,9 +463,22 @@ setIsSaving(false);
 {audioName && <Text>Selected Audio: {audioName}</Text>}
 <TouchableOpacity style={styles.audioButton} onPress={applyAudioToGeneratedVideo}>
   <Text style={styles.audioButtonText}>
-    Add Audio to Video
+  {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.createButtonText}>Add Audio to Video</Text>
+              )}
   </Text>
 </TouchableOpacity>
+</View>
+<TouchableOpacity style={styles.undoButton} onPress={() => {setEditedVideoUrl(null); setEdited2(null); setAudioUri(null); setAudioName(null); setTrimEnd(0); setTrimStart(0);}}>
+  <Text style={styles.audioButtonText}>
+    Undo
+  </Text>
+</TouchableOpacity>
+
+<View>
+            
             {isSaving ? (
               <ActivityIndicator size="large" color="#fff" />
             ) : (
@@ -450,28 +486,30 @@ setIsSaving(false);
                 <Text style={styles.saveButtonText}>Save to Camera Roll</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.backButton} onPress={() => { setVideoUrl(null); setEditedVideoUrl(null); setEdited2(null); setSelectedAlbums([]); setTrimEnd(0); setTrimStart(0); setLocalVideoUri(null); }}>
+            <TouchableOpacity style={styles.backButton} onPress={() => { setVideoUrl(null); setEditedVideoUrl(null); setEdited2(null); setSelectedAlbums([]); setTrimEnd(0); setTrimStart(0); setLocalVideoUri(null); handleBack()}}>
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
+          </View>
           </View>
           </ScrollView>
         ) : (
           <View>
-            <View style={styles.card}>
+            <View style={[styles.card, {width: '100%'}]}>
               <Text style={styles.header}>Select Albums to Create a Video</Text>
               <View style={styles.pickerContainer}>
                 <Picker
                   selectedValue={selectedAlbum}
                   onValueChange={(itemValue) => setSelectedAlbum(itemValue)}
                   style={styles.picker}
+                  itemStyle={styles.pItem}
                   dropdownIconColor="#000"
                 >
-                  <Picker.Item label="Select an album..." value={null} />
+                  <Picker.Item label="Select an album..." value={null} style={styles.pItem} />
                   {albums.map((album) => (
-                    <Picker.Item key={album._id} label={`My Album: ${album.title}`} value={album._id} />
+                    <Picker.Item key={album._id} label={`My Album: ${album.title}`} value={album._id} style={styles.pItem} />
                   ))}
                   {sharedAlbums.map((album) => (
-                    <Picker.Item key={album._id} label={`Shared Album: ${album.title}`} value={album._id} />
+                    <Picker.Item key={album._id} label={`Shared Album: ${album.title}`} value={album._id} style={styles.pItem} />
                   ))}
                 </Picker>
               </View>
@@ -521,20 +559,20 @@ const styles = StyleSheet.create({
   sectionHeader: { fontSize: 18, fontWeight: 'bold', marginTop: 16, marginBottom: 8 },
   albumText: { fontSize: 16 },
   container: { flex: 1, padding: 20, backgroundColor: '#fff', marginTop: 50 },
-  card: { marginTop: 20, paddingHorizontal: 20 },
+  card: { marginTop: 20, paddingHorizontal: 20, backgroundColor: '#f9f9f9', borderRadius: 8, paddingVertical: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2, overflow: 'visible', width: '90%' },
   pickerContainer: {
     height: 50,
     justifyContent: 'center',
     borderRadius: 8,
-    backgroundColor: '#fff',
+    backgroundColor: '#f9f9f9',
     marginBottom: 12,
   },
   scrollContainer: {
     flexGrow: 1,
-    height: '150%',
+    height: '190%',
     backgroundColor: '#fff',
   },
-  picker: { height: 50, width: '100%', color: '#000' },
+  picker: { height: 50, width: '100%', color: '#CCCCCC' },
   addButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 12,
@@ -565,14 +603,25 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 20,
   },
+  undoButton: {
+    backgroundColor: '#FF3B30',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 20,
+  },
   cont2: {
     padding: 20,
     backgroundColor: '#fff',
     width: '100%',
   },
+  pItem: {
+    color: '#333333',
+    fontSize: 16,
+  },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  backButton: { marginTop: 10, padding: 10, backgroundColor: '#888', borderRadius: 6 },
-  backButtonText: { color: '#fff', fontSize: 14 },
+  backButton: { marginTop: 10, padding: 10, backgroundColor: '#888', borderRadius: 6, alignItems: 'center' },
+  backButtonText: { color: '#fff', fontSize: 16, fontWeight: '600'},
   input: {
     height: 50,
     borderColor: '#ccc',

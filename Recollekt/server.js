@@ -104,6 +104,21 @@ async function getSignedUrlForImage(bucketName, key) {
 }
 
 
+const clearDirectory = (directoryPath) => {
+  try {
+    const files = fs.readdirSync(directoryPath); // Read all files in the directory
+    for (const file of files) {
+      const filePath = path.join(directoryPath, file);
+      if (fs.statSync(filePath).isFile()) {
+        fs.unlinkSync(filePath); // Delete the file
+      }
+    }
+    console.log(`Cleared all files in ${directoryPath}`);
+  } catch (err) {
+    console.error(`Error clearing directory ${directoryPath}:`, err);
+  }
+};
+
 async function fetchAndSaveBase64Image(bucketName, key, filePath) {
   try {
     const signedUrl = await getSignedUrlForImage(bucketName, key);
@@ -153,6 +168,15 @@ const getBase64FromS3 = async (bucketName, key) => {
   }
 };
 
+app.post('/clear', (req, res) => {
+  const outputDir = path.join(__dirname, 'output');
+const trimmedDir = path.join(__dirname, 'trimmed');
+
+clearDirectory(outputDir);
+clearDirectory(trimmedDir);
+  res.status(200).json({ message: 'Output directories cleared' });
+});
+
 app.post('/trim-video', up2.none(), (req, res) => {
   const video = req.body.video.replace('http://recollekt.local:3000/videos/', '/Users/Ferdinand/NoName/Recollekt/output/'); // Assuming video is a base64 string or a URL
   const { start, end } = req.body;
@@ -168,7 +192,8 @@ app.post('/trim-video', up2.none(), (req, res) => {
     .output(outputPath)
     .on('end', () => {
       const videoUrl = `http://recollekt.local:${PORT}/trimmed/${path.basename(outputPath)}`;
-      res.json({ trimmedVideoUrl: `/trimmed/${path.basename(outputPath)}`, videoUrl });
+      const duration = end - start; // Duration in seconds
+      res.json({ trimmedVideoUrl: `/trimmed/${path.basename(outputPath)}`, videoUrl, duration });
     })
     .on('error', (err) => {
       console.error('FFmpeg error:', err);
