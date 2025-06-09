@@ -467,7 +467,7 @@ setIsSaving(false);
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.createButtonText}>Add Audio to Video</Text>
-              )}
+              ) }
   </Text>
 </TouchableOpacity>
 </View>
@@ -671,3 +671,4 @@ trimButtonText: {
 });
 
 export default Movie;
+                                                                                                                                                                                                                                
