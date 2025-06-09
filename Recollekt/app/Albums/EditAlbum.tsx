@@ -160,7 +160,7 @@ export default function EditAlbum() {
       if (response.ok) {
         Alert.alert('Success', 'Album updated successfully!');
         navigation.navigate('Albums/ViewAlbum', {
-            _id: data.album.id,
+            _id: route.params._id,
             title: data.album.title,
             coverImage: data.base64CI,
             images: data.images.map((image: { url: string; timestamp: {type: string; required: true} }) => ({

@@ -15,6 +15,7 @@ const os = require('os');
 const bonjour = require('bonjour')();
 const multer = require('multer');
 const storage = multer.memoryStorage();
+const Image = require('./models/Image'); // Adjust the path to your Image model
 require('dotenv').config();
 const { fileTypeFromBuffer } = require('file-type');
 const upload = multer({
@@ -175,6 +176,52 @@ const trimmedDir = path.join(__dirname, 'trimmed');
 clearDirectory(outputDir);
 clearDirectory(trimmedDir);
   res.status(200).json({ message: 'Output directories cleared' });
+});
+
+app.get('/albums/:id/images', async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  const { page = 1, limit = 4 } = req.query; // Extract page and limit from query parameters
+  const skip = (page - 1) * limit; // Calculate the number of items to skip
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, 'your_jwt_secret'); // Replace with your JWT secret
+    const userId = decodedToken.id;
+
+    // Find the album by ID and ensure the user has access
+    const album = await Album.findOne({ _id: req.params.id, creatorId: userId });
+    if (!album) {
+      return res.status(404).json({ error: 'Album not found or access denied' });
+    }
+    console.log('Album found:', album); // Debugging log
+
+    // Fetch images with pagination
+    const images = album.images.slice(skip, skip + parseInt(limit)); // Apply pagination manually
+
+    const totalImages = album.images.length; // Total number of images in the album
+
+    // Convert image URLs to Base64 if needed
+    for (let i = 0; i < images.length; i++) {
+      images[i].url = await getBase64FromS3(
+        process.env.AWS_S3_BUCKET_NAME,
+        extractKeyFromUrl(images[i].url)
+      );
+    }
+    console.log('Fetched images:', images.length); // Debugging log
+
+    res.status(200).json({
+      images,
+      total: totalImages,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  } catch (error) {
+    console.error('Error fetching images:', error);
+    res.status(500).json({ error: 'Failed to fetch images' });
+  }
 });
 
 app.post('/trim-video', up2.none(), (req, res) => {

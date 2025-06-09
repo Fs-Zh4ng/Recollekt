@@ -41,15 +41,11 @@ export default function ViewAlbum() {
 
   const [title, setTitle] = useState(initialTitle);
   const [coverImage, setCoverImage] = useState(initialCoverImage);
-
+  const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-  const [images, setImages] = useState<{ uri: string; timestamp: { type: string; required: true }; }[]>(
-    initialImages.map(image => ({
-      ...image,
-      timestamp: { ...image.timestamp, required: true },
-    }))
-  );
+  const [images, setImages] = useState<{ uri: string; timestamp: { type: string; required: true }; }[]>([]);
 
 
 
@@ -131,7 +127,7 @@ export default function ViewAlbum() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
           },
           body: JSON.stringify({ sharedWith: input }),
         });
@@ -179,7 +175,7 @@ export default function ViewAlbum() {
       const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
         },
       });
 
@@ -195,51 +191,62 @@ export default function ViewAlbum() {
       Alert.alert('Error', 'An error occurred while deleting the album');
     }
   };
-  useFocusEffect(
-    React.useCallback(() => {
-      const fetchUpdatedAlbum = async () => {
-        try {
-          const token = await AsyncStorage.getItem('token');
-          if (!token) {
-            console.error('No token found');
-            return;
-          }
+  const fetchUpdatedAlbum = async () => {
+    try {
+      const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
+        },
+      });
 
-          const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
+      if (response.ok) {
+        const data = await response.json();
+        const updatedAlbum = data.album;
+        setTitle(updatedAlbum.title);
+        setCoverImage(updatedAlbum.coverImage.replace('dataimage/jpegbase64', ''));
+      }
+    } catch (error) {
+      console.error('Error fetching updated album:', error);
+    }
+  };
 
-          if (response.ok) {
-            const data = await response.json(); // Log the data for debugging
-            const updatedAlbum = data.album; // Log the updated album for debugging
-            setTitle(updatedAlbum.title);
-            setCoverImage(updatedAlbum.coverImage.replace('dataimage/jpegbase64', ''));// Log the updated album for debugging
-            const formData = new FormData();
-            for (let i = 0; i < updatedAlbum.images.length; i++) {
-              formData.append(`images[${i}][url]`, updatedAlbum.images[i].url); // Append image URL
-              formData.append(`images[${i}][timestamp]`, updatedAlbum.images[i].timestamp);
-            } // Log the form data for debugging
-            const res = await fetch('http://recollekt.local:3000/imges', {
-              method: 'POST',
-              body: formData,
-            });
-            const imagesData = await res.json();
-            setImages(imagesData.images.map((image: { url: string; timestamp: any }) => ({
-              uri: image.url.replace('dataimage/jpegbase64', ''), // Remove the prefix for the URI
-              timestamp: image.timestamp,
-            })));
-          }
-        } catch (error) {
-          console.error('Error fetching updated album:', error);
+  const fetchImages = async (pageNumber = 1) => {
+      if (isLoading || !hasMore) return;
+  
+      setIsLoading(true);
+      try {
+        const token = await AsyncStorage.getItem('token'); // Retrieve token
+        const response = await fetch(`http://recollekt.local:3000/albums/${_id}/images?page=${pageNumber}&limit=4`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.images.length > 0) {
+          setImages((prevImages) => [...prevImages, ...data.images.map((image: { url: string; timestamp: any }) => ({
+            uri: image.url.replace('dataimage/jpegbase64', ''),
+            timestamp: image.timestamp,
+          }))]);
+          setPage(pageNumber + 1);
+        } else {
+          setHasMore(false);
         }
-      };
+      }
+    } catch (error) {
+      console.error('Error fetching images:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      fetchUpdatedAlbum();
-    }, [_id])
-  );
+  useEffect(() => {
+    fetchUpdatedAlbum();
+    fetchImages();
+  }, [_id]);
 
   const renderImage = ({ item, index }: { item: { uri: string; timestamp: any }; index: number }) => {
     console.log('timestamps:', images[index].timestamp);
@@ -300,6 +307,8 @@ export default function ViewAlbum() {
           timestamp: image.timestamp,
         }))}
         keyExtractor={(item, index) => index.toString()}
+        onEndReached={() => fetchImages(page)} // Fetch more images when reaching the end
+        onEndReachedThreshold={0.5}
         renderItem={renderImage}
         numColumns={2}
         contentContainerStyle={styles.imageList}
@@ -321,7 +330,7 @@ export default function ViewAlbum() {
             data={images}
             keyExtractor={(item, index) => index.toString()}
             horizontal
-            pagingEnabled
+            pagingEnabled // Adjust threshold as needed
             initialScrollIndex={currentImageIndex}
             getItemLayout={(data, index) => ({
               length: Dimensions.get('window').width, // Use the screen width dynamically
