@@ -7,11 +7,42 @@ import { jwtDecode } from 'jwt-decode';
 import { useNavigation } from 'expo-router';
 import { getLocalIPAddress } from '../utils/network';
 import * as MediaLibrary from 'expo-media-library';
+import ImageResizer from 'react-native-image-resizer';
+import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
+
+
 
 
 export default function CreateAlbum() {
   const [serverIP, setServerIP] = useState<string | null>(null);
 
+
+
+  const compressBase64Image = async (uri: string): Promise<string> => {
+    try {
+      console.log('Image URI:', uri);
+
+      // Resize and compress the image
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 800, height: 800 } }], // Resize to 800x800
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } // Compress to 70% quality
+      );
+
+      console.log('Manipulated Image:', manipulatedImage);
+
+      // Convert the manipulated image to Base64
+      const base64Data = await FileSystem.readAsStringAsync(manipulatedImage.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      return `data:image/jpeg;base64,${base64Data}`;
+    } catch (error) {
+      console.error('Error compressing image:', error);
+      throw error;
+    }
+  };
 
   const convertToISO8601 = (input: string): string => {
     // Replace ":" with "-" in date portion and split
@@ -41,7 +72,9 @@ export default function CreateAlbum() {
       base64: true,
     });
     if (!result.canceled) {
-      setCoverImage('data:image/jpeg;base64,' + result.assets[0].base64);
+      console.log('Selected cover image:', result.assets[0].uri);
+      const compressedImage = await compressBase64Image(result.assets[0].uri);
+      setCoverImage(compressedImage);
       console.log('Selected cover image:', result.assets[0].exif);
     } else {
       console.log('Cover image selection canceled');
@@ -61,7 +94,8 @@ export default function CreateAlbum() {
       console.log('Selected images:', result.assets.length);
       for (let i = 0; i < result.assets.length; i++) {
         const time = convertToISO8601(result.assets[i].exif?.DateTime || new Date().toISOString());
-        imageUri.push({uri: 'data:image/jpeg;base64,' + result.assets[i].base64, timestamp: new Date(time)});
+        const compressedImage = await compressBase64Image(result.assets[i].uri);
+        imageUri.push({uri: compressedImage, timestamp: new Date(time)});
         console.log(new Date(time));
       }
       setAlbumImages((prevImages) => [...prevImages, ...imageUri]);

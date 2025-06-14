@@ -14,6 +14,7 @@
     "@aws-sdk/s3-request-presigner": "^3.817.0",
     "@expo/metro-config": "^0.20.14",
     "@expo/vector-icons": "^14.1.0",
+    "@expo/webpack-config": "^19.0.1",
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@react-native-async-storage/async-storage": "^2.1.2",
@@ -91,7 +92,8 @@
     "react-native-webview": "13.13.5",
     "react-native-zeroconf": "^0.13.8",
     "sharp": "^0.34.2",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "webpack": "^5.99.9"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
