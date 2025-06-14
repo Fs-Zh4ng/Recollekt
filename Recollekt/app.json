@@ -24,7 +24,7 @@
       "package": "com.recollekt.app"
     },
     "web": {
-      "bundler": "webpack",
+      "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
