@@ -1,0 +1,96 @@
+{
+  "apiRoutes": [],
+  "htmlRoutes": [
+    {
+      "file": "./(tabs)/index.tsx",
+      "page": "/(tabs)/index",
+      "namedRegex": "^(?:/\\(tabs\\))?(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./index.tsx",
+      "page": "/index",
+      "namedRegex": "^/(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./(tabs)/types.ts",
+      "page": "/(tabs)/types",
+      "namedRegex": "^(?:/\\(tabs\\))?/types(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./(tabs)/Movie.tsx",
+      "page": "/(tabs)/Movie",
+      "namedRegex": "^(?:/\\(tabs\\))?/Movie(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./(tabs)/Create.tsx",
+      "page": "/(tabs)/Create",
+      "namedRegex": "^(?:/\\(tabs\\))?/Create(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./(tabs)/profile.tsx",
+      "page": "/(tabs)/profile",
+      "namedRegex": "^(?:/\\(tabs\\))?/profile(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "expo-router/build/views/Sitemap.js",
+      "page": "/_sitemap",
+      "namedRegex": "^/_sitemap(?:/)?$",
+      "routeKeys": {},
+      "generated": true
+    },
+    {
+      "file": "./login/login.tsx",
+      "page": "/login/login",
+      "namedRegex": "^/login/login(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./UserContext.tsx",
+      "page": "/UserContext",
+      "namedRegex": "^/UserContext(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./utils/network.ts",
+      "page": "/utils/network",
+      "namedRegex": "^/utils/network(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./Albums/ViewAlbum.tsx",
+      "page": "/Albums/ViewAlbum",
+      "namedRegex": "^/Albums/ViewAlbum(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./Albums/EditAlbum.tsx",
+      "page": "/Albums/EditAlbum",
+      "namedRegex": "^/Albums/EditAlbum(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./utils/compressImage.ts",
+      "page": "/utils/compressImage",
+      "namedRegex": "^/utils/compressImage(?:/)?$",
+      "routeKeys": {}
+    }
+  ],
+  "notFoundRoutes": [
+    {
+      "file": "./+not-found.tsx",
+      "page": "/+not-found",
+      "namedRegex": "^(?:/(?<notfound>.+?))?(?:/)?$",
+      "routeKeys": {
+        "notfound": "not-found"
+      }
+    }
+  ],
+  "redirects": [],
+  "rewrites": []
+}
