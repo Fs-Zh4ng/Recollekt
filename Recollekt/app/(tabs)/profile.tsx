@@ -6,14 +6,12 @@ import { AuthContext } from '../_layout'; // Adjust the path to your UserContext
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { getLocalIPAddress } from '../utils/network';
-import Zeroconf from 'react-native-zeroconf';
 
 
 export default function ProfileScreen() {
   const [serverIP, setServerIP] = useState<string | null>(null);
 
-  const { user, setUser } = useContext(UserContext) as UserContextType;
+  const { user, setUser, isUserLoading } = useContext(UserContext) as UserContextType;
   const { setIsAuthenticated } = useContext(AuthContext);
   const navigation = useNavigation();
 
@@ -58,7 +56,7 @@ export default function ProfileScreen() {
         const formData = new FormData();
         formData.append('profileImage', profileImage);
 
-        const response = await fetch(`http://recollekt.local:3000/user/profile-picture`, {
+        const response = await fetch(`http://35.183.184.126:3000/user/profile-picture`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -83,19 +81,34 @@ export default function ProfileScreen() {
 
 
   const handleLogout = async () => {
-    const token = await AsyncStorage.getItem('token');
-    if (!token) {
-      Alert.alert('Error', 'No token found');
-      return;
-    } else {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        Alert.alert('Error', 'No token found');
+        return;
+      }
+      
       console.log('Token:', token);
+      
+      // Clear all stored data
       await AsyncStorage.removeItem('token');
+      
+      // Reset user context to default state
+      setUser({ username: 'Guest', friends: [], profileImage: '' });
+      
+      // Set authentication state to false first
       setIsAuthenticated(false);
-      Alert.alert('Success', 'Logged out successfully');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'login/login' as never }], // Set the new stack with only the login route
-      });
+      
+      // Small delay to ensure state updates are processed
+      setTimeout(() => {
+        Alert.alert('Success', 'Logged out successfully');
+      }, 100);
+      
+      // The root layout will automatically redirect to login when isAuthenticated becomes false
+      
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('Error', 'Something went wrong during logout');
     }
   };
 
@@ -106,7 +119,7 @@ export default function ProfileScreen() {
     const fetchPendingRequests = async () => {
       try {
         const token = await AsyncStorage.getItem('token');
-        const response = await fetch(`http://recollekt.local:3000/friends/pending`, {
+        const response = await fetch(`http://35.183.184.126:3000/friends/pending`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -126,7 +139,7 @@ export default function ProfileScreen() {
     const fetchUserProfile = async () => {
       try {
         const token = await AsyncStorage.getItem('token');
-        const response = await fetch(`http://recollekt.local:3000/user/profile`, {
+        const response = await fetch(`http://35.183.184.126:3000/user/profile`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -134,7 +147,7 @@ export default function ProfileScreen() {
         });
         const data = await response.json();
         if (response.ok) {
-          setUser(data.user); // Set initial profile image
+          setUser(data.user); // The server returns {user: userData}
         }
         else {
           console.error('Failed to fetch user profile:', data.error);
@@ -157,7 +170,7 @@ export default function ProfileScreen() {
 
     try {
       const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://recollekt.local:3000/friends/request', {
+      const response = await fetch('http://35.183.184.126:3000/friends/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -181,7 +194,7 @@ export default function ProfileScreen() {
   const handleApproveRequest = async (username: string) => {
     try {
       const token = await AsyncStorage.getItem('token');
-      const response = await fetch('http://recollekt.local:3000/friends/approve', {
+      const response = await fetch('http://35.183.184.126:3000/friends/approve', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

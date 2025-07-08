@@ -238,12 +238,7 @@ app.get('/albums/:id/images', async (req, res) => {
 });
 
 app.post('/trim-video', up2.none(), (req, res) => {
-  let videoPath = req.body.video;
-  if (videoPath.startsWith('http://35.183.184.126:3000:/videos/')) {
-    videoPath = videoPath.replace('http://35.183.184.126:3000:/videos/', path.join(__dirname, 'output/')); // Adjust the path as needed
-  } else if (videoPath.startsWith('http://35.183.184.126:3000:/trimmed/')) {
-    videoPath = videoPath.replace('http://35.183.184.126:3000:/trimmed/', path.join(__dirname, 'trimmed/')); // Adjust the path as needed
-  }
+  const video = req.body.video.replace('http://recollekt.local:3000/videos/', '/Users/Ferdinand/NoName/Recollekt/output/'); // Assuming video is a base64 string or a URL
   const { start, end } = req.body;
   console.log('Received startTime:', start, 'endTime:', end); // Debugging log
   console.log(req.body);
@@ -251,17 +246,14 @@ app.post('/trim-video', up2.none(), (req, res) => {
   const outputFileName = `trimmed-${Date.now()}.mp4`;
   const outputPath = path.join(__dirname, 'trimmed', outputFileName);
 
-  ffmpeg(videoPath) // Assuming 'video' is a valid file path or URL
+  ffmpeg(video) // Assuming 'video' is a valid file path or URL
     .setStartTime(start)
     .setDuration(end - start)
     .output(outputPath)
     .on('end', () => {
-      const videoUrl = `http://35.183.184.126:3000:/trimmed/${path.basename(outputPath)}`;
+      const videoUrl = `http://recollekt.local:${PORT}/trimmed/${path.basename(outputPath)}`;
       const duration = end - start; // Duration in seconds
-      const videoBuffer = fs.readFileSync(outputPath);
-      const base64Vid = `data:video/mp4;base64,${videoBuffer.toString('base64')}`;
-      console.log(base64Vid);
-      res.json({ trimmedVideoUrl: `/trimmed/${path.basename(outputPath)}`, videoUrl, duration, base64Vid });
+      res.json({ trimmedVideoUrl: `/trimmed/${path.basename(outputPath)}`, videoUrl, duration });
     })
     .on('error', (err) => {
       console.error('FFmpeg error:', err);
@@ -329,10 +321,10 @@ app.get('/user/profile', async (req, res) => {
 app.post('/add-audio', upload.single('audio'), async (req, res) => {
   try {
     let videoPath = req.body.video;
-    if (videoPath.startsWith('http://35.183.184.126:3000:/videos/')) {
-      videoPath = videoPath.replace('http://35.183.184.126:3000:/videos/', path.join(__dirname, 'output/')); // Adjust the path as needed
-    } else if (videoPath.startsWith('http://35.183.184.126:3000:/trimmed/')) {
-      videoPath = videoPath.replace('http://35.183.184.126:3000:/trimmed/', path.join(__dirname, 'trimmed/')); // Adjust the path as needed
+    if (videoPath.startsWith('http://recollekt.local:3000/videos/')) {
+      videoPath = videoPath.replace('http://recollekt.local:3000/videos/', '/Users/Ferdinand/NoName/Recollekt/output/'); // Adjust the path as needed
+    } else if (videoPath.startsWith('http://recollekt.local:3000/trimmed/')) {
+      videoPath = videoPath.replace('http://recollekt.local:3000/trimmed/', '/Users/Ferdinand/NoName/Recollekt/trimmed/'); // Adjust the path as needed
     }
 
 
@@ -345,7 +337,7 @@ app.post('/add-audio', upload.single('audio'), async (req, res) => {
     audioStream.push(null);
 
     const outputPath = path.join(__dirname, 'output', `merged_${Date.now()}.mp4`);
-    const videoUrl = `http://35.183.184.126:3000:/videos/${path.basename(outputPath)}`;
+    const videoUrl = `http://recollekt.local:${PORT}/videos/${path.basename(outputPath)}`;
 
     
 
@@ -358,11 +350,8 @@ app.post('/add-audio', upload.single('audio'), async (req, res) => {
       .outputOptions('-shortest')
       .save(outputPath)
       .on('end', () => {
-        const videoBuffer = fs.readFileSync(outputPath);
-        const base64Vid = `data:video/mp4;base64,${videoBuffer.toString('base64')}`;
-        console.log(base64Vid);
         console.log('Merging completed:', outputPath);
-        res.status(200).json({ videoUrl, base64Vid });
+        res.status(200).json({ videoUrl });
       })
       .on('error', (err) => {
         console.error('Error during merging:', err);

@@ -33,6 +33,28 @@ type Album = {
   images: { url: string; timestamp: string }[];
 };
 
+interface SaveBase64ToFileParams {
+  base64String: string;
+  filePath: string;
+}
+
+const saveBase64ToFile = async ({ base64String, filePath }: SaveBase64ToFileParams): Promise<void> => {
+  try {
+    // Remove the Base64 prefix (e.g., "data:video/mp4;base64,")
+    const base64Data = base64String.replace(/^data:video\/mp4;base64,/, '');
+
+    // Write the Base64 data to a file
+    await FileSystem.writeAsStringAsync(filePath, base64Data, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    console.log('File saved at:', filePath);
+  } catch (error) {
+    console.error('Error saving Base64 to file:', error);
+  }
+};
+
+
 const Movie = () => {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [sharedAlbums, setSharedAlbums] = useState<Album[]>([]);
@@ -49,9 +71,13 @@ const Movie = () => {
   const [videoDuration, setVideoDuration] = useState(0); // Duration of the video
   const [edited2, setEdited2] = useState<string | null>(null);
   const [audioName, setAudioName] = useState<string | null>(null); // State to store the audio file name
+  const [base64Vid, setBase64Vid] = useState<string | null>(null);
+  let index = 0;
+  const localUri = `${FileSystem.documentDirectory}video.mp4`;
+  const editedUri = `${FileSystem.documentDirectory}edited_video${index}.mp4`;
 
 
-
+  
 
   const handleTrimStartChange = (value: number) => {
     setTrimStart(value);
@@ -77,11 +103,11 @@ const Movie = () => {
         }
 
         const [sharedResponse, albumsResponse] = await Promise.all([
-          fetch(`http://recollekt.local:3000/albums/shared`, {
+          fetch(`http://35.183.184.126:3000/albums/shared`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch(`http://recollekt.local:3000/albums`, {
+          fetch(`http://35.183.184.126:3000/albums`, {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
           }),
@@ -150,7 +176,7 @@ const Movie = () => {
       formData.append('end', String(trimEnd));
       console.log(formData);
   
-      const response = await fetch('http://recollekt.local:3000/trim-video', {
+      const response = await fetch('http://35.183.184.126:3000/trim-video', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -166,7 +192,9 @@ const Movie = () => {
       const data = await response.json();
       const trimmedVideoUri = `file:///Users/Ferdinand/NoName/Recollekt${data.trimmedVideoUrl}`;
       setEditedVideoUrl(trimmedVideoUri);
-      setEdited2(data.videoUrl);
+      saveBase64ToFile({ base64String: data.base64Vid, filePath: editedUri });
+      index += 1;
+      setEdited2(editedUri);
       setVideoDuration(data.duration || 0); // Set video duration if available
       console.log('Trimmed Video URL:', data.videoUrl);
       console.log('Trimmed Video URL:', trimmedVideoUri);
@@ -222,7 +250,7 @@ const Movie = () => {
 
       console.log('FormData:', formData);
   
-      const response = await fetch(`http://recollekt.local:3000/add-audio`, {
+      const response = await fetch(`http://35.183.184.126:3000/add-audio`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -237,8 +265,10 @@ const Movie = () => {
       }
   
       const data = await response.json();
+      saveBase64ToFile({ base64String: data.base64Vid, filePath: editedUri });
+      index += 1;
       setEditedVideoUrl(data.outputVideoPath);
-      setEdited2(data.videoUrl);
+      setEdited2(editedUri);
       Alert.alert('Success', 'Audio added to video successfully!');
     } catch (error) {
       console.error('Error applying audio:', error);
@@ -272,7 +302,7 @@ const Movie = () => {
       const formData = new FormData();
       formData.append('albums', JSON.stringify(payload));
 
-      const response = await fetch(`http://recollekt.local:3000/generate-video`, {
+      const response = await fetch(`http://35.183.184.126:3000/generate-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -284,11 +314,17 @@ const Movie = () => {
       if (!response.ok) {
         const errorData = await response.json();
         Alert.alert('Video Error', errorData.error || 'Failed to create video.');
+        console.log(response);
         return;
       }
 
       const data = await response.json();
+      console.log(data);
       if (data.videoUrl) {
+        setBase64Vid(data.base64Vid);
+        await saveBase64ToFile({base64String: data.base64Vid, filePath: localUri});
+        console.log('Base64 Video Length:', data.base64Vid.length);
+        console.log('Base64 Video:', data.base64Vid.substring(0, 100)); // Log first 30 characters of base64 string
         setVideoUrl(data.videoUrl);
         console.log('Video URL:', data.videoUrl);
         setLocalVideoUri(data.outputVideoPath);
@@ -307,7 +343,7 @@ const Movie = () => {
   };
 
   const handleBack = () => {
-    const res = fetch('http://recollekt.local:3000/clear', {
+    const res = fetch('http://35.183.184.126:3000/clear', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -328,7 +364,7 @@ const Movie = () => {
       url = edited2;
     }
     else if (videoUrl) {
-      url = videoUrl;
+      url = localUri;
     } else {
       Alert.alert('No Video', 'Please create or select a video to save.');
       return;
@@ -342,22 +378,7 @@ const Movie = () => {
         return;
       }
 
-      const tempUri = `${FileSystem.cacheDirectory}temp_video.mp4`;
-      const response = await FileSystem.downloadAsync(url, tempUri);
-
-      const permanentUri = `${FileSystem.documentDirectory}video.mp4`;
-      await FileSystem.moveAsync({ from: response.uri, to: permanentUri });
-      console.log('Downloaded to:', response.uri);
-      console.log('Moved to:', permanentUri);
-const fileInfo = await FileSystem.getInfoAsync(permanentUri, { size: true });
-console.log('File info:', fileInfo);
-
-const data = await FileSystem.readAsStringAsync(permanentUri, {
-  encoding: FileSystem.EncodingType.Base64,
-});
-console.log('Video base64 prefix:', data.slice(0, 30));
-
-const asset = await MediaLibrary.createAssetAsync(permanentUri);
+const asset = await MediaLibrary.createAssetAsync(url);
 const album = await MediaLibrary.getAlbumAsync('Recollekt');
 if (album) {
   await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
@@ -386,7 +407,7 @@ setIsSaving(false);
   // >
     
       <View style={styles.container}>
-        {videoUrl ? (
+        {videoUrl && base64Vid ? (
           <ScrollView
             contentContainerStyle={styles.scrollContainer}
             keyboardShouldPersistTaps="handled"
@@ -404,7 +425,7 @@ setIsSaving(false);
             isLooping
             /> ): (
               <Video
-              source={{ uri: videoUrl }}
+              source={{ uri: localUri }}
               style={styles.fullscreenVideo}
               useNativeControls
               resizeMode={ResizeMode.CONTAIN}

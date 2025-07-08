@@ -7,7 +7,6 @@ import { jwtDecode } from 'jwt-decode';
 import { useNavigation } from 'expo-router';
 import { getLocalIPAddress } from '../utils/network';
 import * as MediaLibrary from 'expo-media-library';
-import ImageResizer from 'react-native-image-resizer';
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 
@@ -61,7 +60,7 @@ export default function CreateAlbum() {
   const [imageTimestamps, setImageTimestamps] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-    const { user } = useContext(UserContext) as UserContextType;
+    const { user, isUserLoading } = useContext(UserContext) as UserContextType;
   const navigation = useNavigation();
 
   const handlePickCoverImage = async () => {
@@ -136,7 +135,7 @@ export default function CreateAlbum() {
 
   setLoading(true);
     try {
-      const response = await fetch(`http://recollekt.local:3000/albums`, {
+      const response = await fetch(`http://35.183.184.126:3000/albums`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

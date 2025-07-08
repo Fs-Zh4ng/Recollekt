@@ -4,9 +4,9 @@ import { StyleSheet, TouchableOpacity, Text, FlatList, View, Image, Alert, Activ
 import { useNavigation, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from './types';
+import { RootStackParamList } from '../types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, '(tabs)/index'>;
-import ImageResizer from 'react-native-image-resizer';
+
 
 
 export default function HomeScreen() {
@@ -32,7 +32,7 @@ export default function HomeScreen() {
             return;
           }
           
-          const sharedResponse = await fetch(`http://recollekt.local:3000/albums/shared`, {
+          const sharedResponse = await fetch(`http://35.183.184.126:3000/albums/shared`, {
             method: 'GET',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -48,7 +48,7 @@ export default function HomeScreen() {
           }
   
           // Fetch user albums
-          const albumsResponse = await fetch(`http://recollekt.local:3000/albums`, {
+          const albumsResponse = await fetch(`http://35.183.184.126:3000/albums`, {
             method: 'GET',
             headers: {
               Authorization: `Bearer ${token}`,

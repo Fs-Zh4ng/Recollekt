@@ -7,13 +7,20 @@
     "icon": "./assets/images/icon.png",
     "scheme": "recollekt",
     "userInterfaceStyle": "automatic",
+    "main": "node_modules/expo-router/entry",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSPhotoLibraryAddUsageDescription": "We need access to your photo library to save videos."
+        "NSPhotoLibraryAddUsageDescription": "We need access to your photo library to save videos.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "We need access to your camera to take photos and videos.",
+        "NSPhotoLibraryUsageDescription": "We need access to your photo library to save and upload photos.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       },
-      "bundleIdentifier": "com.recollekt.app"
+      "bundleIdentifier": "com.fsz.recollekt"
     },
     "android": {
       "adaptiveIcon": {
@@ -44,6 +51,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6922d494-3328-4108-9762-0d3e19af819b"
+      }
     }
   },
   "ios": {

@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { UserContext } from '../UserContext'; // Adjust the path to your UserContext file
 import { getLocalIPAddress } from '../utils/network';
 import Zeroconf from 'react-native-zeroconf';
+import { router } from 'expo-router';
 
 
 export default function LoginScreen() {
@@ -37,7 +38,7 @@ export default function LoginScreen() {
     setLoading(true);
     console.log('Sign Up:', { username, password });
     try { 
-      const response = await fetch(`http://recollekt.local:3000/signup`, {
+      const response = await fetch(`http://35.183.184.126:3000/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +74,7 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      const response = await fetch(`http://recollekt.local:3000/login`, {
+      const response = await fetch(`http://35.183.184.126:3000/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,20 +87,16 @@ export default function LoginScreen() {
       console.log('Login Response:', data);
 
       if (response.ok) {
-        // Save the token (optional, for future API requests)
+        // Save the token for future API requests
         await AsyncStorage.setItem('token', data.token);
-        navigation.reset({
-          index: 0,
-          routes: [{ name: '(tabs)' as never }], // Set the new stack with only the (tabs) route
-        }); // Navigate to the home screen
-
-        // Set authentication state to true\
+        
+        // Set user data in context
         console.log(data.username);
         console.log(data.friends);
         console.log(data.profileImage);
         let img = data.profileImage; // Default to the provided profileImage
         if (!(data.profileImage == '/Users/Ferdinand/NoName/Recollekt/assets/images/DefProfile.webp')) {
-          const profImage = await fetch(`http://recollekt.local:3000/images?url=${data.profileImage}`, {
+          const profImage = await fetch(`http://35.183.184.126:3000/images?url=${data.profileImage}`, {
             method: 'GET',
           });
           console.log('hi',profImage);
@@ -108,13 +105,18 @@ export default function LoginScreen() {
           img = img1.image.replace('dataimage/jpegbase64', ''); // Extract the image URL from the response
         }
         
- // Log the first 100 characters of the image URL for debugging
+        // Log the first 100 characters of the image URL for debugging
         setUser({
           username: data.username,
           friends: data.friends || [], // Use an empty array if friends are not provided
           profileImage: img || '', // Use an empty string if profileImage is not provided
         }); // Set user data in context
+        
+        // Set authentication state to true
         setIsAuthenticated(true);
+        
+        // Navigate to the home screen using router.replace for clean navigation
+        router.replace('/(tabs)');
         
       } else {
         Alert.alert('Login Failed', data.error || 'Invalid credentials');

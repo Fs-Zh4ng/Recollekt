@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Image, FlatList, StyleSheet, TouchableOpacity, Alert, Button, ActivityIndicator } from 'react-native';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { RootStackParamList } from '../(tabs)/types'; // Adjust the path as necessary
+import { RootStackParamList } from '../types'; // Adjust the path as necessary
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
@@ -74,7 +74,7 @@ export default function EditAlbum() {
   
 
   const changeImage = async (uri: string) => {
-    const res = await fetch(`http://recollekt.local:3000/images?url=${uri}`, {
+    const res = await fetch(`http://35.183.184.126:3000/images?url=${uri}`, {
       method: 'GET',
     });
     const data = await res.json();
@@ -177,7 +177,7 @@ export default function EditAlbum() {
                 formData.append(`timestamps[${index}]`, image.timestamp.type || new Date().toISOString());
               });
   
-      const response = await fetch(`http://recollekt.local:3000/edit-album`, {
+      const response = await fetch(`http://35.183.184.126:3000/edit-album`, {
         method: 'PUT', // Use PUT for updating resources
         headers: {
           Authorization: `Bearer ${token}`, // Include the token for authentication

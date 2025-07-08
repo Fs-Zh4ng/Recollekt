@@ -1,3 +1,18 @@
+
+// IMG.LY CONFIGURATION - REPOS - START
+buildscript {
+    repositories {
+        maven { url "https://artifactory.img.ly/artifactory/imgly" }
+    }
+    dependencies {
+        def kotlinVersion = findProperty('android.kotlinVersion') ?: "1.8.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}"
+        classpath 'ly.img.android.sdk:plugin:10.9.0'
+        classpath('com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:1.8.0-1.0.9')
+    }
+}
+
+// IMG.LY CONFIGURATION - REPOS - END
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
@@ -14,12 +29,30 @@ buildscript {
     classpath 'com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin:1.8.0-1.0.9' // KSP version is depending on your Kotlin version.
     classpath 'ly.img.android.sdk:plugin:10.9.0'
   }
+
+// IMG.LY CONFIGURATION - SDK_VERSIONS - START
+//
+// THIS SECTION HAS BEEN REPLACED BY THE IMG.LY SDK. THE PREVIOUS STATE
+// CAN BE FOUND BELOW:
+//
+// IMG.LY - PREVIOUS CONTENT - START
+// ------------------
+//  ext {
+//       buildToolsVersion = "34.0.0"
+//       minSdkVersion = 21
+//       compileSdkVersion = 34
+//        targetSdkVersion = 34
+//    }
+// ------------------
+// IMG.LY - PREVIOUS CONTENT - END
   ext {
        buildToolsVersion = "34.0.0"
        minSdkVersion = 21
        compileSdkVersion = 34
         targetSdkVersion = 34
     }
+// IMG.LY CONFIGURATION - SDK_VERSIONS - END
+
 }
 
 def reactNativeAndroidDir = new File(
@@ -46,3 +79,13 @@ allprojects {
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
+
+// IMG.LY CONFIGURATION - MAVEN - START
+
+allprojects {
+    repositories {
+        maven { url "https://artifactory.img.ly/artifactory/imgly" }
+    }
+}
+
+// IMG.LY CONFIGURATION - MAVEN - END

@@ -17,7 +17,7 @@ import {
   useNavigation,
   useFocusEffect,
 } from '@react-navigation/native';
-import { RootStackParamList } from '../(tabs)/types';
+import { RootStackParamList } from '../types';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ImageModal from 'react-native-image-modal';
@@ -51,7 +51,7 @@ export default function ViewAlbum() {
 
   const getImages = async (url: string) => {
     try {
-      const response = await fetch(`http://recollekt.local:3000/images?url=${url}`, {
+      const response = await fetch(`http://35.183.184.126:3000/images?url=${url}`, {
         method: 'GET',
       });
       if (!response.ok) {
@@ -123,7 +123,7 @@ export default function ViewAlbum() {
           return;
         }
 
-        const response = await fetch(`http://recollekt.local:3000/albums/${_id}/share`, {
+        const response = await fetch(`http://35.183.184.126:3000/albums/${_id}/share`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -172,7 +172,7 @@ export default function ViewAlbum() {
         return;
       }
 
-      const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
+      const response = await fetch(`http://35.183.184.126:3000/albums/${_id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
@@ -193,7 +193,7 @@ export default function ViewAlbum() {
   };
   const fetchUpdatedAlbum = async () => {
     try {
-      const response = await fetch(`http://recollekt.local:3000/albums/${_id}`, {
+      const response = await fetch(`http://35.183.184.126:3000/albums/${_id}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${await AsyncStorage.getItem('token')}`,
@@ -217,24 +217,29 @@ export default function ViewAlbum() {
       setIsLoading(true);
       try {
         const token = await AsyncStorage.getItem('token'); // Retrieve token
-        const response = await fetch(`http://recollekt.local:3000/albums/${_id}/images?page=${pageNumber}&limit=4`, {
+        const response = await fetch(`http://35.183.184.126:3000/albums/${_id}/images?page=${pageNumber}&limit=4`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
-
+      console.log("res", response);
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched images data:', data); // Log the fetched data for debugging
         if (data.images.length > 0) {
           setImages((prevImages) => [...prevImages, ...data.images.map((image: { url: string; timestamp: any }) => ({
             uri: image.url.replace('dataimage/jpegbase64', ''),
             timestamp: image.timestamp,
           }))]);
+          console.log('Fetched images:', data.images);
           setPage(pageNumber + 1);
         } else {
+          console.log("idk")
           setHasMore(false);
         }
+      } else {
+        console.log("smtg aint right");
       }
     } catch (error) {
       console.error('Error fetching images:', error);
